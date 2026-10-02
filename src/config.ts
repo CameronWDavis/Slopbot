@@ -53,7 +53,7 @@ function interpolate(value: unknown): unknown {
   return value;
 }
 
-export function loadConfig(rootDir = process.cwd()): Config {
+export function loadConfig(rootDir = process.env.SLOPBOT_HOME ? path.resolve(process.env.SLOPBOT_HOME) : process.cwd()): Config {
   loadDotEnv(rootDir);
   const file = path.join(rootDir, CONFIG_FILE);
   const raw: any = fs.existsSync(file) ? interpolate(YAML.parse(fs.readFileSync(file, "utf8")) ?? {}) : {};

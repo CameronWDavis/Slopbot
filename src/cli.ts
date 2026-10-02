@@ -33,6 +33,7 @@ const HELP = `${c.bold("slopbot")}: open-source personal AI agents
   slopbot activity [bot] [-n 50]      show the audit log
   slopbot memory <bot>                show what a bot remembers
   slopbot ping [provider/model]       check that a model responds
+  slopbot mcp                         run as an MCP server (stdio) for Claude Code etc.
 `;
 
 const brief = (args: Record<string, unknown>) => {
@@ -190,6 +191,15 @@ async function main() {
       const t0 = Date.now();
       const turn = await provider.chat({ model, system: "Reply with exactly: pong", messages: [{ role: "user", content: "ping" }], tools: [] });
       console.log(`${provider.name}/${model} → "${turn.text}" in ${Date.now() - t0}ms`);
+      return;
+    }
+
+    case "mcp": {
+      // stdout is the MCP channel: nothing else may print there.
+      const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
+      const { createMcpServer } = await import("./mcp/server.js");
+      await createMcpServer(config, store).connect(new StdioServerTransport());
+      console.error(`slopbot MCP server ready (home: ${config.rootDir})`);
       return;
     }
 

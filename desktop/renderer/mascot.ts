@@ -1,5 +1,6 @@
 // Renders Bag Buddy with three.js and plays the clips the Director picks.
 import * as THREE from "three";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { Director, type Manifest, type Player, type PlayRequest } from "./director.js";
 
@@ -104,23 +105,35 @@ export async function mountMascot(container: HTMLElement, base = "assets/bag-bud
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.1;
   container.append(renderer.domElement);
 
   const scene = new THREE.Scene();
   scene.add(gltf.scene);
 
-  // Soft neutral fill + key, then the cyberpunk part: hot-pink and violet rim lights.
-  scene.add(new THREE.HemisphereLight(0xffe6fb, 0x1a0b2e, 1.1));
-  const key = new THREE.DirectionalLight(0xffffff, 1.6);
-  key.position.set(3, 5, 6);
-  const rimPink = new THREE.DirectionalLight(0xff2bd6, 4.5);
-  rimPink.position.set(-5, 2.5, -3);
-  const rimViolet = new THREE.DirectionalLight(0x8a5cff, 4);
-  rimViolet.position.set(5, 3, -4);
-  const under = new THREE.PointLight(0xff2bd6, 3, 6);
+  // A soft studio environment gives the satin plastic real reflections, so the charcoal body
+  // reads as a shape instead of a dark silhouette.
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environmentIntensity = 0.22;
+  pmrem.dispose();
+
+  scene.add(new THREE.HemisphereLight(0xffe6fb, 0x1a0b2e, 0.9));
+  // Key and fill from the front so the face and cream eyes pop.
+  const key = new THREE.DirectionalLight(0xffffff, 2.6);
+  key.position.set(2.5, 4, 6);
+  const fill = new THREE.DirectionalLight(0xd9c8ff, 0.9);
+  fill.position.set(-3, 1.5, 5);
+  // The cyberpunk part: strong hot-pink and violet rims from behind outline the silhouette.
+  const rimPink = new THREE.DirectionalLight(0xff2bd6, 8);
+  rimPink.position.set(-4, 3, -5);
+  const rimViolet = new THREE.DirectionalLight(0x8a5cff, 8);
+  rimViolet.position.set(4.5, 3.5, -4.5);
+  const top = new THREE.DirectionalLight(0xc9b6ff, 2.2);
+  top.position.set(0, 7, -2);
+  const under = new THREE.PointLight(0xff2bd6, 2.5, 6);
   under.position.set(0, 0.2, 2);
-  scene.add(key, rimPink, rimViolet, under);
+  scene.add(key, fill, rimPink, rimViolet, top, under);
 
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
   camera.position.set(3, 2.5, 8);

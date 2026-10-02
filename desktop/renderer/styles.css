@@ -744,6 +744,21 @@ button {
   z-index: 2;
   cursor: pointer;
 }
+.mascot::before {
+  /* neon halo behind Bag Buddy so the dark body separates from the background */
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: calc(var(--floor-y, 78%) - var(--floor-w, 220px) * 0.55);
+  width: calc(var(--floor-w, 220px) * 1.25);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 43, 214, 0.32) 0%, rgba(157, 77, 255, 0.2) 38%, transparent 68%);
+  filter: blur(6px);
+  z-index: -1;
+  pointer-events: none;
+}
 .mascot canvas {
   position: relative;
   width: 100% !important;

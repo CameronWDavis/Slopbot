@@ -56,6 +56,22 @@ npm run desktop:dist:linux    # → release/SlopBot-<version>.AppImage
 
 It runs fully on your machine, with no web server and no open ports. In dev it uses this folder's `bots/`, config, and `data/`. The packaged app keeps them in `~/Library/Application Support/SlopBot/home` (seeded with the sample bots on first launch). Override with `SLOPBOT_HOME`.
 
+## Drive your bots from Claude Code (MCP) 🔌
+
+SlopBot is also an MCP server, so Claude Code, Claude Desktop, or any MCP client can hand your bots tasks:
+
+> "Ask ledger how much I spent on dining last month"
+
+This repo ships a project `.mcp.json`, so Claude Code offers to enable the `slopbot` server when you open the folder. For another client, point it at:
+
+```bash
+npx tsx /path/to/SlopBot/src/cli.ts mcp      # set SLOPBOT_HOME=/path/to/SlopBot if launched from elsewhere
+```
+
+Tools: `list_bots`, `ask_bot`, `run_schedule`, `list_pending_approvals`, `get_activity`, `get_memory`.
+
+Tasks sent over MCP run unattended (background mode). File writes, shell commands and emails are queued for **you** to approve in the desktop app or with `slopbot approve`. The MCP server has no approve tool on purpose.
+
 ## Make your own bot
 
 Drop a YAML file into `bots/`:
