@@ -1,6 +1,6 @@
 // A fake window.slopbot so the renderer can be previewed in a plain browser (npm run desktop:preview).
 // The real app always uses the preload API.
-import type { AgentEvent, ApprovalRequest, McpServerDef, McpServerStatus, McpToolInfo, SlopbotApi } from "../api.js";
+import type { AgentEvent, ApprovalRequest, McpServerDef, McpServerStatus, McpToolInfo, OllamaStatus, PullProgress, SlopbotApi } from "../api.js";
 
 export function createMockApi(): SlopbotApi {
   const eventSubs = new Set<(e: AgentEvent) => void>();
@@ -8,6 +8,27 @@ export function createMockApi(): SlopbotApi {
   const answers = new Map<string, (a: string) => void>();
   const emit = (e: AgentEvent) => eventSubs.forEach((cb) => cb(e));
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const pullSubs = new Set<(p: PullProgress) => void>();
+  const ol: OllamaStatus = {
+    running: true,
+    version: "0.35.0",
+    installed: true,
+    baseUrl: "http://localhost:11434",
+    ramBytes: 36e9,
+    provider: "ollama",
+    defaultModel: "ollama/qwen3:8b",
+    bots: [
+      { name: "coder", model: "" },
+      { name: "ledger", model: "" },
+      { name: "reporter", model: "" },
+    ],
+    models: [
+      { name: "qwen3:8b", size: 5.23e9, family: "qwen3", parameterSize: "8.2B", quantization: "Q4_K_M", capabilities: ["completion", "tools", "thinking"], loaded: true },
+      { name: "gemma3:4b", size: 3.34e9, family: "gemma3", parameterSize: "4.3B", quantization: "Q4_K_M", capabilities: ["completion", "vision"] },
+    ],
+    pulling: [],
+  };
+  const cancelled = new Set<string>();
   const servers = new Map<string, McpServerStatus>([
     [
       "knowledge-graph",
@@ -30,7 +51,7 @@ export function createMockApi(): SlopbotApi {
   };
 
   return {
-    info: async () => ({ dataDir: "~/SlopBot/data", rootDir: "~/SlopBot", homeDir: "/Users/you", defaultModel: "ollama/qwen3:8b", version: "preview" }),
+    info: async () => ({ dataDir: "~/SlopBot/data", rootDir: "~/SlopBot", homeDir: "/Users/you", defaultModel: "ollama/qwen3:8b", version: "preview", secrets: "keychain" }),
     listBots: async () => [
       { name: "ledger", description: "Personal finance bot. Imports bank CSVs, categorizes spending, answers questions, sends weekly reports.", model: "ollama/qwen3:8b", tools: ["finance.summary", "email.send"], schedules: [{ name: "weekly-report", cron: "0 8 * * MON", task: "Weekly report" }] },
       { name: "coder", description: "Coding bot. Reads, edits, and tests code in folders you allow.", model: "ollama/qwen3:8b", tools: ["fs.read", "shell.run"], schedules: [] },
@@ -110,6 +131,39 @@ export function createMockApi(): SlopbotApi {
       const map = data.mcpServers ?? data;
       for (const [n, d] of Object.entries<McpServerDef>(map)) servers.set(n, { name: n, def: { ...d, bots: d.bots ?? bots, enabled: true }, state: "idle", tools: [] });
       return Object.keys(map);
+    },
+    ollamaStatus: async () => structuredClone(ol),
+    ollamaStart: async () => {
+      await sleep(800);
+      ol.running = true;
+      return "0.35.0";
+    },
+    ollamaStop: async () => {
+      await sleep(500);
+      ol.running = false;
+    },
+    ollamaDownload: async () => {},
+    async ollamaPull(model) {
+      const total = 2.5e9;
+      for (let done = 0; done <= total; done += total / 25) {
+        if (cancelled.delete(model)) {
+          pullSubs.forEach((cb) => cb({ model, status: "cancelled", completed: 0, total: 0, error: "Cancelled" }));
+          return;
+        }
+        pullSubs.forEach((cb) => cb({ model, status: "pulling", completed: done, total }));
+        await sleep(120);
+      }
+      ol.models.push({ name: model, size: total, parameterSize: "4B", quantization: "Q4_K_M", capabilities: ["completion", "tools"] });
+      pullSubs.forEach((cb) => cb({ model, status: "success", completed: total, total, done: true }));
+    },
+    ollamaCancel: async (model) => void cancelled.add(model),
+    ollamaDelete: async (model) => void (ol.models = ol.models.filter((m) => m.name !== model)),
+    ollamaUnload: async (model) => void ol.models.forEach((m) => m.name === model && (m.loaded = false)),
+    ollamaSetDefault: async (model) => void (ol.defaultModel = `ollama/${model}`),
+    ollamaUseForBot: async (bot, model) => void ol.bots.forEach((b) => b.name === bot && (b.model = model ? `ollama/${model}` : "")),
+    onPullProgress(cb) {
+      pullSubs.add(cb);
+      return () => pullSubs.delete(cb);
     },
     onEvent(cb) {
       eventSubs.add(cb);

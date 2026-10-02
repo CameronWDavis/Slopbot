@@ -9,6 +9,8 @@ import { CONFIG_FILE, loadConfig } from "./config.js";
 import { resolveModel } from "./providers/index.js";
 import { runScheduled, startDaemon } from "./scheduler/scheduler.js";
 import { McpManager } from "./mcp/client.js";
+import { Ollama, ollamaProviderName, ollamaUrl } from "./ollama/ollama.js";
+import { ensureOllamaProvider, setDefaultModel } from "./config-edit.js";
 import { Store } from "./store/store.js";
 import { toolsFor } from "./tools/registry.js";
 
@@ -36,6 +38,8 @@ const HELP = `${c.bold("slopbot")}: open-source personal AI agents
   slopbot ping [provider/model]       check that a model responds
   slopbot mcp                         run as an MCP server (stdio) for Claude Code etc.
   slopbot connectors                  list MCP servers your bots use, and test them
+  slopbot models                      local Ollama models (and whether Ollama is running)
+  slopbot pull <model> [--default]    download an Ollama model (optionally make it the default)
 `;
 
 const brief = (args: Record<string, unknown>) => {
@@ -197,6 +201,44 @@ async function main() {
       const t0 = Date.now();
       const turn = await provider.chat({ model, system: "Reply with exactly: pong", messages: [{ role: "user", content: "ping" }], tools: [] });
       console.log(`${provider.name}/${model} → "${turn.text}" in ${Date.now() - t0}ms`);
+      return;
+    }
+
+    case "models": {
+      const ollama = new Ollama(ollamaUrl(config));
+      const v = await ollama.version();
+      if (!v) {
+        const inst = Ollama.detect();
+        return console.log(inst.binary || inst.app ? "Ollama is installed but not running. Start it with: ollama serve" : "Ollama isn't installed: https://ollama.com/download");
+      }
+      console.log(c.dim(`Ollama ${v} at ${ollama.baseUrl} · default model: ${config.defaultModel}`));
+      const prov = ollamaProviderName(config);
+      for (const m of await ollama.list()) {
+        const tools = m.capabilities ? (m.capabilities.includes("tools") ? c.green("tools") : c.yellow("chat-only")) : "";
+        const def = config.defaultModel === `${prov}/${m.name}` ? c.bold(c.cyan(" (default)")) : "";
+        console.log(`${m.name.padEnd(28)} ${(m.parameterSize ?? "").padEnd(7)} ${(m.size / 1e9).toFixed(1).padStart(5)} GB  ${tools}${m.loaded ? c.dim(" in-memory") : ""}${def}`);
+      }
+      return;
+    }
+
+    case "pull": {
+      const model = need(rest.find((a) => !a.startsWith("--")), "model name");
+      const ollama = new Ollama(ollamaUrl(config));
+      if (!(await ollama.version())) throw new Error("Ollama isn't running. Start it with: ollama serve");
+      let last = 0;
+      await ollama.pull(model, (p) => {
+        const pct = p.total ? Math.floor((p.completed / p.total) * 100) : 0;
+        if (p.done || pct !== last) {
+          last = pct;
+          process.stdout.write(`\r${model}: ${p.total ? `${pct}% of ${(p.total / 1e9).toFixed(1)} GB` : p.status}`.padEnd(60));
+        }
+      });
+      console.log(`\n${c.green("✓")} ${model} downloaded`);
+      if (rest.includes("--default")) {
+        const prov = ensureOllamaProvider(config.rootDir, `${ollama.baseUrl}/v1`);
+        setDefaultModel(config.rootDir, `${prov}/${model}`);
+        console.log(`Default model is now ${prov}/${model}`);
+      }
       return;
     }
 

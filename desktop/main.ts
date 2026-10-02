@@ -9,6 +9,9 @@ import { loadBot, loadBots } from "../src/agent/bot.js";
 import { Agent, executeApproval } from "../src/agent/runtime.js";
 import { loadConfig, type Config } from "../src/config.js";
 import { McpManager, type McpServerDef } from "../src/mcp/client.js";
+import { Ollama, ollamaProviderName, ollamaUrl } from "../src/ollama/ollama.js";
+import { ensureOllamaProvider, setBotModel, setDefaultModel } from "../src/config-edit.js";
+import { openSecretStore } from "../src/secrets.js";
 import { Store, newId } from "../src/store/store.js";
 import { toolsFor } from "../src/tools/registry.js";
 import type { ActivityItem, AgentEvent, ApprovalRequest, BotSummary, QueuedApproval } from "./api.js";
@@ -41,6 +44,9 @@ function resolveHome(): string {
 let config: Config;
 let store: Store;
 let mcp: McpManager;
+let ollama: Ollama;
+let home: string;
+const pulls = new Map<string, AbortController>();
 let win: BrowserWindow | null = null;
 const agents = new Map<string, { agent: Agent; model?: string }>();
 const busy = new Set<string>();
@@ -94,6 +100,7 @@ function registerIpc() {
     dataDir: config.dataDir,
     rootDir: config.rootDir,
     homeDir: os.homedir(),
+    secrets: openSecretStore(config.dataDir).kind,
     defaultModel: config.defaultModel ?? "",
     version: app.getVersion(),
   }));
@@ -190,6 +197,60 @@ function registerIpc() {
 
   ipcMain.handle("open:data", () => shell.openPath(config.dataDir));
 
+  // ── Ollama (local models) ──────────────────────────
+  /** Re-read config after edits so new defaults/models apply to the next message. */
+  const reloadConfig = () => {
+    config = loadConfig(home);
+    ollama.baseUrl = ollamaUrl(config);
+    for (const name of agents.keys()) if (!busy.has(name)) agents.delete(name);
+  };
+  ipcMain.handle("ollama:status", async () => {
+    const version = await ollama.version();
+    const install = Ollama.detect();
+    return {
+      running: !!version,
+      version,
+      installed: !!(install.binary || install.app),
+      baseUrl: ollama.baseUrl,
+      ramBytes: os.totalmem(),
+      provider: ollamaProviderName(config),
+      defaultModel: config.defaultModel ?? "",
+      bots: loadBots(config).map((b) => ({ name: b.name, model: b.model ?? "" })),
+      models: version ? await ollama.list().catch(() => []) : [],
+      pulling: [...pulls.keys()],
+    };
+  });
+  ipcMain.handle("ollama:start", () => ollama.start());
+  ipcMain.handle("ollama:stop", () => ollama.stop());
+  ipcMain.handle("ollama:download", () => shell.openExternal("https://ollama.com/download"));
+  ipcMain.handle("ollama:pull", async (_e, model: string) => {
+    if (pulls.has(model)) return;
+    const ac = new AbortController();
+    pulls.set(model, ac);
+    try {
+      await ollama.pull(model, (p) => win?.webContents.send("ollama:progress", p), ac.signal);
+    } catch (e: any) {
+      const cancelled = ac.signal.aborted;
+      win?.webContents.send("ollama:progress", { model, status: cancelled ? "cancelled" : "error", completed: 0, total: 0, error: cancelled ? "Cancelled" : e?.message ?? String(e) });
+      if (!cancelled) throw e;
+    } finally {
+      pulls.delete(model);
+    }
+  });
+  ipcMain.handle("ollama:cancel", (_e, model: string) => pulls.get(model)?.abort());
+  ipcMain.handle("ollama:delete", (_e, model: string) => ollama.delete(model));
+  ipcMain.handle("ollama:unload", (_e, model: string) => ollama.unload(model));
+  ipcMain.handle("ollama:setDefault", (_e, model: string) => {
+    const provider = ensureOllamaProvider(config.rootDir, `${ollama.baseUrl}/v1`);
+    setDefaultModel(config.rootDir, `${provider}/${model}`);
+    reloadConfig();
+  });
+  ipcMain.handle("ollama:useForBot", (_e, botName: string, model: string | null) => {
+    const provider = ensureOllamaProvider(config.rootDir, `${ollama.baseUrl}/v1`);
+    setBotModel(loadBot(config, botName).file, model ? `${provider}/${model}` : null);
+    reloadConfig();
+  });
+
   // ── MCP connectors ─────────────────────────────────
   // Idle conversations are dropped when servers change so bots pick up the new tools.
   const refreshAgents = () => {
@@ -285,12 +346,14 @@ function adoptShellPath() {
 
 app.on("before-quit", () => {
   void mcp?.closeAll();
+  for (const ac of pulls.values()) ac.abort();
 });
 
 app.whenReady().then(() => {
   adoptShellPath();
-  const home = resolveHome();
+  home = resolveHome();
   config = loadConfig(home);
+  ollama = new Ollama(ollamaUrl(config));
   store = new Store(config.dataDir);
   mcp = new McpManager(config, (url) => shell.openExternal(url));
 
@@ -324,7 +387,8 @@ function smokeTest(outPng: string) {
       await wait(300);
     }
     const before = await js(`document.getElementById("status-text").textContent`);
-    await js(`(() => { const i = document.getElementById("input"); i.value = ${JSON.stringify(process.env.SLOPBOT_SMOKE_MSG ?? "How much did I spend on dining?")}; document.getElementById("composer").requestSubmit(); })()`);
+    if (process.env.SLOPBOT_SMOKE_MSG !== "-")
+      await js(`(() => { const i = document.getElementById("input"); i.value = ${JSON.stringify(process.env.SLOPBOT_SMOKE_MSG ?? "How much did I spend on dining?")}; document.getElementById("composer").requestSubmit(); })()`);
     await wait(400);
     const during = await js(`document.getElementById("status-text").textContent`);
     for (let i = 0; i < 600 && busy.size; i++) await wait(100);
@@ -339,6 +403,11 @@ function smokeTest(outPng: string) {
       await wait(500);
       await js(`document.querySelectorAll(".tool-list").forEach((d) => (d.open = true))`);
       await wait(200);
+    }
+    // Dev-only: extra UI steps for the smoke run (e.g. click Download), then let it settle.
+    if (process.env.SLOPBOT_SMOKE_JS) {
+      console.log("smoke js →", JSON.stringify(await js(process.env.SLOPBOT_SMOKE_JS)));
+      await wait(Number(process.env.SLOPBOT_SMOKE_WAIT ?? 1500));
     }
     const img = await w.webContents.capturePage();
     fs.writeFileSync(outPng, img.toPNG());

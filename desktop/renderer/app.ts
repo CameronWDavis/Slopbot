@@ -4,6 +4,7 @@ import { renderMarkdown } from "./markdown.js";
 import { mountMascot } from "./mascot.js";
 import { createMockApi } from "./mock-api.js";
 import { createConnectors } from "./connectors.js";
+import { createModels } from "./models.js";
 
 declare global {
   interface Window {
@@ -37,6 +38,16 @@ const connectors = createConnectors(
   () => homeDir,
   () => refreshConnectorCount(),
 );
+
+const models_ = createModels(api, {
+  onConfigChanged: async () => {
+    bots = await api.listBots();
+    models = await api.listModels();
+    renderBots();
+    updateModelPicker();
+  },
+  onWork: (s) => (s === "start" ? director?.workStarted() : director?.workFinished(s === "done")),
+});
 
 async function refreshConnectorCount() {
   const n = (await api.mcpList()).filter((s) => s.def.enabled !== false).length;
@@ -156,7 +167,8 @@ async function selectBot(name: string) {
 
 function showView(view: string) {
   document.querySelectorAll<HTMLButtonElement>(".view-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
-  for (const v of ["chat", "approvals", "activity", "memory", "connectors"]) $(`view-${v}`).hidden = v !== view;
+  for (const v of ["chat", "approvals", "activity", "memory", "models", "connectors"]) $(`view-${v}`).hidden = v !== view;
+  if (view === "models") models_.load();
   if (view === "connectors") connectors.load();
   if (view === "approvals") loadApprovals();
   if (view === "activity") loadActivity();
@@ -427,6 +439,7 @@ function wire() {
   document.querySelectorAll<HTMLButtonElement>(".view-btn").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view!)));
   $("refresh-approvals").addEventListener("click", loadApprovals);
   $("refresh-activity").addEventListener("click", loadActivity);
+  $("refresh-models").addEventListener("click", () => models_.load());
   $("open-data").addEventListener("click", () => api.openDataDir());
   $("approval-allow").addEventListener("click", () => answer("yes"));
   $("approval-deny").addEventListener("click", () => answer("no"));
@@ -449,6 +462,8 @@ async function main() {
   const info = await api.info();
   $("foot").textContent = `v${info.version} · ${info.dataDir}`;
   homeDir = info.homeDir;
+  $("secrets-note").textContent =
+    info.secrets === "keychain" ? "Sign-in tokens are kept in your macOS Keychain." : info.secrets === "libsecret" ? "Sign-in tokens are kept in your system keyring." : "";
   refreshConnectorCount();
   bots = await api.listBots();
   api.listModels().then((m) => {

@@ -1,6 +1,6 @@
 // Exposes a narrow, typed API to the sandboxed renderer. No Node access leaks through.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
-import type { AgentEvent, ApprovalRequest, SlopbotApi } from "./api.js";
+import type { AgentEvent, ApprovalRequest, PullProgress, SlopbotApi } from "./api.js";
 
 const subscribe = <T>(channel: string, cb: (payload: T) => void) => {
   const listener = (_e: IpcRendererEvent, payload: T) => cb(payload);
@@ -28,6 +28,17 @@ const api: SlopbotApi = {
   mcpImport: (json, bots) => ipcRenderer.invoke("mcp:import", json, bots),
   mcpSignIn: (name) => ipcRenderer.invoke("mcp:signin", name),
   mcpSignOut: (name) => ipcRenderer.invoke("mcp:signout", name),
+  ollamaStatus: () => ipcRenderer.invoke("ollama:status"),
+  ollamaStart: () => ipcRenderer.invoke("ollama:start"),
+  ollamaStop: () => ipcRenderer.invoke("ollama:stop"),
+  ollamaDownload: () => ipcRenderer.invoke("ollama:download"),
+  ollamaPull: (model) => ipcRenderer.invoke("ollama:pull", model),
+  ollamaCancel: (model) => ipcRenderer.invoke("ollama:cancel", model),
+  ollamaDelete: (model) => ipcRenderer.invoke("ollama:delete", model),
+  ollamaUnload: (model) => ipcRenderer.invoke("ollama:unload", model),
+  ollamaSetDefault: (model) => ipcRenderer.invoke("ollama:setDefault", model),
+  ollamaUseForBot: (bot, model) => ipcRenderer.invoke("ollama:useForBot", bot, model),
+  onPullProgress: (cb) => subscribe<PullProgress>("ollama:progress", cb),
   onEvent: (cb) => subscribe<AgentEvent>("agent:event", cb),
   onApprovalRequest: (cb) => subscribe<ApprovalRequest>("approval:request", cb),
 };

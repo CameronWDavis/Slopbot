@@ -56,6 +56,18 @@ npm run desktop:dist:linux    # → release/SlopBot-<version>.AppImage
 
 It runs fully on your machine, with no web server and no open ports. In dev it uses this folder's `bots/`, config, and `data/`. The packaged app keeps them in `~/Library/Application Support/SlopBot/home` (seeded with the sample bots on first launch). Override with `SLOPBOT_HOME`.
 
+## Local models in one click (Ollama) 🦙
+
+Open **Models** in the desktop app:
+
+- See whether Ollama is installed and running, and **Start / Stop** it (or **Get Ollama ↗** if it isn't installed)
+- **Download** recommended open models with a live progress bar. Each shows its real download size and whether it fits your Mac's memory
+- Every installed model shows whether it supports **tools** (bots need this), whether it's loaded in memory, and its size
+- **Set as default** or **Use for bot…**: SlopBot edits your config/bot YAML for you (keeping comments)
+- **Unload** to free memory now, **Delete** to reclaim disk space, or type any model from ollama.com/library
+
+From the terminal: `npm run slopbot models`, `npm run slopbot pull qwen3:8b --default`.
+
 ## Give your bots more tools (MCP connectors) 🧩
 
 Open **Connectors** in the desktop app to plug any MCP server into your bots:

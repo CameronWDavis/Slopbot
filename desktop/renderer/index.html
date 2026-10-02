@@ -33,6 +33,7 @@
           <button class="view-btn" data-view="approvals">Approvals <span class="badge" id="approvals-badge" hidden>0</span></button>
           <button class="view-btn" data-view="activity">Activity</button>
           <button class="view-btn" data-view="memory">Memory</button>
+          <button class="view-btn" data-view="models">Models</button>
           <button class="view-btn" data-view="connectors">Connectors <span class="count" id="connectors-count" hidden>0</span></button>
         </nav>
         <div class="sidebar-foot" id="foot"></div>
@@ -74,11 +75,23 @@
           <div class="chat-head"><div><h1>Memory</h1><p class="muted" id="memory-desc"></p></div></div>
           <div class="list" id="memory"></div>
         </section>
+        <section class="view" id="view-models" hidden>
+          <div class="chat-head">
+            <div>
+              <h1>Models</h1>
+              <p class="muted">Run open-source models on your own computer with Ollama. One click to download, one click to use.</p>
+            </div>
+            <button class="ghost small" id="refresh-models">Refresh</button>
+          </div>
+          <div class="connector-error" id="ollama-alert" hidden></div>
+          <div class="list" id="models"></div>
+        </section>
+
         <section class="view" id="view-connectors" hidden>
           <div class="chat-head">
             <div>
               <h1>Connectors</h1>
-              <p class="muted">Give your bots new tools from MCP servers. Read-only tools run freely; anything else asks you first.</p>
+              <p class="muted">Give your bots new tools from MCP servers. Read-only tools run freely; anything else asks you first. <span id="secrets-note"></span></p>
             </div>
             <div class="head-actions">
               <button class="ghost small" id="mcp-paste">Paste JSON</button>

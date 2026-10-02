@@ -70,8 +70,41 @@ export interface McpServerStatus {
   tools: McpToolInfo[];
 }
 
+export interface OllamaModel {
+  name: string;
+  size: number;
+  family?: string;
+  parameterSize?: string;
+  quantization?: string;
+  capabilities?: string[];
+  loaded?: boolean;
+  vram?: number;
+}
+
+export interface OllamaStatus {
+  running: boolean;
+  version: string | null;
+  installed: boolean;
+  baseUrl: string;
+  ramBytes: number;
+  provider: string;
+  defaultModel: string;
+  bots: { name: string; model: string }[];
+  models: OllamaModel[];
+  pulling: string[];
+}
+
+export interface PullProgress {
+  model: string;
+  status: string;
+  completed: number;
+  total: number;
+  done?: boolean;
+  error?: string;
+}
+
 export interface SlopbotApi {
-  info(): Promise<{ dataDir: string; rootDir: string; homeDir: string; defaultModel: string; version: string }>;
+  info(): Promise<{ dataDir: string; rootDir: string; homeDir: string; defaultModel: string; version: string; secrets: "keychain" | "libsecret" | "file" }>;
   listBots(): Promise<BotSummary[]>;
   listModels(): Promise<string[]>;
   send(bot: string, text: string, model?: string): Promise<void>;
@@ -90,6 +123,17 @@ export interface SlopbotApi {
   mcpImport(json: string, bots: string[]): Promise<string[]>;
   mcpSignIn(name: string): Promise<McpServerStatus>;
   mcpSignOut(name: string): Promise<void>;
+  ollamaStatus(): Promise<OllamaStatus>;
+  ollamaStart(): Promise<string>;
+  ollamaStop(): Promise<void>;
+  ollamaDownload(): Promise<void>;
+  ollamaPull(model: string): Promise<void>;
+  ollamaCancel(model: string): Promise<void>;
+  ollamaDelete(model: string): Promise<void>;
+  ollamaUnload(model: string): Promise<void>;
+  ollamaSetDefault(model: string): Promise<void>;
+  ollamaUseForBot(bot: string, model: string | null): Promise<void>;
+  onPullProgress(cb: (p: PullProgress) => void): () => void;
   onEvent(cb: (e: AgentEvent) => void): () => void;
   onApprovalRequest(cb: (r: ApprovalRequest) => void): () => void;
 }

@@ -817,6 +817,135 @@ button {
   text-align: center;
 }
 
+/* ── models ─────────────────────────────────────────── */
+.ollama-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.card-actions.inline {
+  margin-top: 0;
+}
+.model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 10px;
+}
+.model-card {
+  display: flex;
+  flex-direction: column;
+}
+.model-card .card-actions {
+  margin-top: auto;
+  padding-top: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.model-card.pick {
+  border-color: var(--pink);
+  box-shadow: var(--glow-pink);
+}
+.model-name {
+  font: 600 15px var(--mono);
+  color: var(--text);
+}
+.model-name.small {
+  font-size: 13px;
+  margin-top: 10px;
+}
+.default-tag {
+  color: #fff;
+  background: rgba(255, 43, 214, 0.25);
+}
+.warn-tag,
+.fit-tight {
+  color: var(--amber);
+  border-color: rgba(255, 197, 61, 0.5);
+}
+.mem-tag {
+  color: var(--violet-soft);
+  border-color: var(--line-2);
+}
+.fit-good {
+  color: var(--lime);
+  border-color: rgba(182, 255, 59, 0.45);
+}
+.fit-too-big {
+  color: var(--danger);
+  border-color: rgba(255, 61, 113, 0.5);
+}
+.bot-select {
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  padding: 4px 8px;
+  font: 12px var(--mono);
+  color: var(--violet-soft);
+}
+.pull {
+  margin-top: 10px;
+}
+.pull-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  overflow: hidden;
+}
+.pull-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--pink), var(--violet));
+  box-shadow: 0 0 12px rgba(255, 43, 214, 0.7);
+  transition: width 0.25s ease-out;
+}
+.pull-fill.done {
+  background: var(--lime);
+  box-shadow: 0 0 12px rgba(182, 255, 59, 0.6);
+}
+.pull-fill.err {
+  background: var(--danger);
+}
+.pull-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  font: 12px var(--mono);
+  color: var(--muted);
+}
+.pull-err {
+  color: #ffc2d2;
+}
+.custom-row {
+  display: flex;
+  gap: 8px;
+}
+.custom-row input {
+  flex: 1;
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  font: 13px var(--mono);
+  color: var(--text);
+  outline: none;
+}
+.custom-row input:focus {
+  border-color: var(--pink);
+  box-shadow: var(--glow-pink);
+}
+#ollama-alert {
+  margin: 12px 24px 0;
+}
+
 /* ── connectors ─────────────────────────────────────── */
 .head-actions {
   display: flex;
