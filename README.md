@@ -65,7 +65,8 @@ A native desktop app with a cozy cream-and-lime look and **Bag Buddy**, an anima
 ```bash
 npm run desktop               # build and launch
 npm run desktop:dist:mac      # → release/SlopBot-<version>-arm64.dmg
-npm run desktop:dist:win      # → release/SlopBot Setup <version>.exe
+npm run desktop:dist:win      # → release/SlopBot Setup <version>.exe (x64 + ARM; build on Windows/CI, or a Mac with Rosetta)
+npm run desktop:dist:win:zip  # → release/SlopBot-<version>-win.zip (x64; unzip and run SlopBot.exe; builds on any Mac)
 npm run desktop:dist:linux    # → release/SlopBot-<version>.AppImage
 ```
 

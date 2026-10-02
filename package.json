@@ -23,7 +23,8 @@
     "desktop:dist:mac": "node desktop/build.mjs && electron-builder --mac",
     "desktop:dist:win": "node desktop/build.mjs && electron-builder --win",
     "desktop:dist:linux": "node desktop/build.mjs && electron-builder --linux",
-    "branding": "node assets/branding/generate.mjs"
+    "branding": "node assets/branding/generate.mjs",
+    "desktop:dist:win:zip": "node desktop/build.mjs && electron-builder --win zip --x64"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.31.0",
@@ -83,8 +84,19 @@
     },
     "win": {
       "target": [
-        "nsis",
-        "portable"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "assets/branding/generated/icon.ico"
     },
