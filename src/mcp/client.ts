@@ -15,6 +15,7 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { AuthStore, NeedsSignInError, SlopOAuthProvider, waitForAuthCode } from "./oauth.js";
 import type { Config } from "../config.js";
+import { openSecretStore } from "../secrets.js";
 import type { Risk, Tool } from "../tools/types.js";
 
 export const MCP_FILE = "slopbot.mcp.json";
@@ -119,7 +120,7 @@ export class McpManager {
     private openUrl?: (url: string) => void | Promise<void>,
   ) {
     this.file = path.join(config.rootDir, MCP_FILE);
-    this.auth = new AuthStore(path.join(config.dataDir, "mcp-auth"));
+    this.auth = new AuthStore(openSecretStore(config.dataDir), path.join(config.dataDir, "mcp-auth"));
   }
 
   // ── config file ──────────────────────────────────────

@@ -14,6 +14,8 @@ import type { Config } from "../src/config.js";
 import { McpManager } from "../src/mcp/client.js";
 import { NeedsSignInError } from "../src/mcp/oauth.js";
 
+process.env.SLOPBOT_SECRETS = "file"; // tests never touch the real Keychain
+
 let base = "";
 let srv: http.Server;
 const challenges = new Map<string, string>(); // code → PKCE challenge
@@ -139,8 +141,10 @@ test("sign in: discovery → registration → browser → PKCE token → connect
   assert.deepEqual(st.tools.map((t) => [t.name, t.risk]), [["list_pages", "read"], ["create_page", "external"]]);
 
   // Tokens are stored privately and reused by a fresh manager (e.g. the CLI or a restart) with no browser.
-  const file = path.join(mcp.auth["dir" as keyof typeof mcp.auth] as unknown as string, "notes.json");
+  assert.equal(mcp.auth.secrets.kind, "file");
+  const file = path.join((mcp as any).config.dataDir, "secrets", "mcp-oauth_notes.secret");
   assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).tokens.access_token, "tok-1");
   await mcp.closeAll();
   const later = new McpManager((mcp as any).config);
   const { tools } = await later.toolsForBot("ledger");

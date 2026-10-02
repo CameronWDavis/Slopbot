@@ -7,6 +7,7 @@ import http from "node:http";
 import path from "node:path";
 import type { OAuthClientProvider, OAuthDiscoveryState } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
+import type { SecretStore } from "../secrets.js";
 
 /** Fixed loopback port: the redirect URI is registered with each server, so it must be stable. */
 export const OAUTH_CALLBACK_PORT = Number(process.env.SLOPBOT_OAUTH_PORT ?? 33418);
@@ -21,32 +22,63 @@ interface AuthRecord {
   savedAt?: string;
 }
 
-/** Per-server OAuth state in <data>/mcp-auth/<server>.json, readable only by the user (0600). */
+/**
+ * Per-server OAuth state (client registration, tokens, PKCE verifier) in the OS secret store:
+ * the macOS Keychain, libsecret on Linux, or 0600 files as a fallback. Token files written by
+ * older versions under <data>/mcp-auth are moved into the secret store on first read.
+ */
 export class AuthStore {
-  constructor(private dir: string) {}
+  private cache = new Map<string, { at: number; rec: AuthRecord }>();
+  private static TTL_MS = 3000; // the SDK reads tokens on every request; other processes may refresh them
 
-  private file(server: string) {
-    return path.join(this.dir, `${server.replace(/[^A-Za-z0-9_.-]/g, "_")}.json`);
+  constructor(
+    readonly secrets: SecretStore,
+    private legacyDir?: string,
+  ) {}
+
+  private key(server: string) {
+    return `mcp-oauth:${server.replace(/[^A-Za-z0-9._-]/g, "_")}`;
+  }
+
+  private legacyFile(server: string) {
+    return this.legacyDir ? path.join(this.legacyDir, `${server.replace(/[^A-Za-z0-9_.-]/g, "_")}.json`) : undefined;
   }
 
   read(server: string): AuthRecord {
-    try {
-      return JSON.parse(fs.readFileSync(this.file(server), "utf8"));
-    } catch {
-      return {};
+    const hit = this.cache.get(server);
+    if (hit && Date.now() - hit.at < AuthStore.TTL_MS) return hit.rec;
+    let rec: AuthRecord = {};
+    const raw = this.secrets.get(this.key(server));
+    if (raw) {
+      try {
+        rec = JSON.parse(raw);
+      } catch {
+        rec = {};
+      }
+    } else {
+      const legacy = this.legacyFile(server);
+      if (legacy && fs.existsSync(legacy)) {
+        rec = JSON.parse(fs.readFileSync(legacy, "utf8"));
+        this.secrets.set(this.key(server), JSON.stringify(rec));
+        fs.rmSync(legacy, { force: true });
+      }
     }
+    this.cache.set(server, { at: Date.now(), rec });
+    return rec;
   }
 
   update(server: string, patch: Partial<AuthRecord>) {
-    fs.mkdirSync(this.dir, { recursive: true, mode: 0o700 });
-    const next = { ...this.read(server), ...patch, savedAt: new Date().toISOString() };
-    const f = this.file(server);
-    fs.writeFileSync(`${f}.tmp`, JSON.stringify(next, null, 2), { mode: 0o600 });
-    fs.renameSync(`${f}.tmp`, f);
+    const next: AuthRecord = { ...this.read(server), ...patch, savedAt: new Date().toISOString() };
+    for (const k of Object.keys(next) as (keyof AuthRecord)[]) if (next[k] === undefined) delete next[k];
+    this.secrets.set(this.key(server), JSON.stringify(next));
+    this.cache.set(server, { at: Date.now(), rec: next });
   }
 
   clear(server: string) {
-    fs.rmSync(this.file(server), { force: true });
+    this.secrets.delete(this.key(server));
+    const legacy = this.legacyFile(server);
+    if (legacy) fs.rmSync(legacy, { force: true });
+    this.cache.delete(server);
   }
 
   isSignedIn(server: string) {
