@@ -4,6 +4,7 @@ import os from "node:os";
 import type { BotDef } from "../agent/bot.js";
 import type { Config } from "../config.js";
 import type { Store } from "../store/store.js";
+import type { Vault } from "../vault/vault.js";
 
 export type Risk = "read" | "write" | "external" | "dangerous";
 
@@ -14,12 +15,16 @@ export interface ToolContext {
   /** Absolute, realpath'd sandbox roots. roots[0] is the bot's workspace. */
   roots: string[];
   sessionId: string;
+  /** The encrypted credential vault (secrets are injected by tools, never returned to the model). */
+  vault?: Vault;
 }
 
 export interface Tool {
   name: string;
   description: string;
   risk: Risk;
+  /** Risk can depend on the arguments (e.g. sending a credential). Defaults to `risk`. */
+  riskFor?: (args: any) => Risk;
   parameters: Record<string, unknown>;
   run(args: any, ctx: ToolContext): Promise<string>;
 }

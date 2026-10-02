@@ -946,6 +946,76 @@ button {
   margin: 12px 24px 0;
 }
 
+/* ── vault & search ─────────────────────────────────── */
+.vault-card .vault-lock {
+  filter: drop-shadow(0 0 6px rgba(182, 255, 59, 0.6));
+}
+.vault-meta .chips {
+  margin-top: 6px;
+}
+.secret-row {
+  display: flex;
+  gap: 6px;
+}
+.secret-row input {
+  flex: 1;
+}
+.field select {
+  align-self: flex-start;
+}
+.search-card {
+  margin-bottom: 6px;
+}
+.search-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.search-key {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+.search-key input,
+.search-url {
+  flex: 1;
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+  font: 12.5px var(--mono);
+  color: var(--text);
+  outline: none;
+}
+.search-url {
+  width: 100%;
+  margin-top: 8px;
+}
+.search-key input.has-secret::placeholder,
+#vault-secret.has-secret::placeholder {
+  color: var(--lime);
+}
+.search-key a {
+  color: var(--pink-soft);
+  white-space: nowrap;
+}
+.result-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+.result-link {
+  color: var(--violet-soft);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── connectors ─────────────────────────────────────── */
 .head-actions {
   display: flex;

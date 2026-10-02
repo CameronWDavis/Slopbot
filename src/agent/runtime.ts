@@ -9,6 +9,8 @@ import { newId, type Store } from "../store/store.js";
 import { getTool, toolsFor } from "../tools/registry.js";
 import { expandHome, type Tool, type ToolContext } from "../tools/types.js";
 import type { McpManager } from "../mcp/client.js";
+import { openSecretStore } from "../secrets.js";
+import { Vault } from "../vault/vault.js";
 import type { BotDef } from "./bot.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { makeFindTool, selectTools, toolBudget } from "./toolselect.js";
@@ -38,8 +40,10 @@ export function resolveRoots(config: Config, store: Store, bot: BotDef): string[
 }
 
 export function makeToolContext(config: Config, store: Store, bot: BotDef, sessionId: string): ToolContext {
-  return { bot, config, store, roots: resolveRoots(config, store, bot), sessionId };
+  return { bot, config, store, roots: resolveRoots(config, store, bot), sessionId, vault: openVault(config) };
 }
+
+export const openVault = (config: Config) => new Vault(path.join(config.dataDir, "vault.enc"), openSecretStore(config.dataDir));
 
 function truncate(s: string, max: number) {
   return s.length <= max ? s : `${s.slice(0, max)}\n… [truncated ${s.length - max} chars]`;
@@ -167,7 +171,7 @@ export class Agent {
       return `Error: tool "${call.name}" is not available to you. Available: ${this.tools.map((t) => t.name).join(", ")}`;
     }
 
-    let decision = evaluate(this.config, bot, call, tool.risk, this.mode, this.sessionAllow);
+    let decision = evaluate(this.config, bot, call, tool.riskFor?.(call.args) ?? tool.risk, this.mode, this.sessionAllow);
     this.hooks.onToolCall?.(call, decision);
 
     if (decision.action === "ask") {

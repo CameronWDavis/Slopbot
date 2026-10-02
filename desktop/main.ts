@@ -10,7 +10,10 @@ import { Agent, executeApproval } from "../src/agent/runtime.js";
 import { loadConfig, type Config } from "../src/config.js";
 import { McpManager, type McpServerDef } from "../src/mcp/client.js";
 import { Ollama, ollamaProviderName, ollamaUrl } from "../src/ollama/ollama.js";
-import { ensureOllamaProvider, setBotModel, setDefaultModel } from "../src/config-edit.js";
+import { ensureOllamaProvider, setBotModel, setDefaultModel, setSearchConfig } from "../src/config-edit.js";
+import { openVault } from "../src/agent/runtime.js";
+import { KEYED, resolveSearch, searchKeyName, webSearch, type SearchProvider } from "../src/search/search.js";
+import type { VaultEntry } from "../src/vault/vault.js";
 import { openSecretStore } from "../src/secrets.js";
 import { Store, newId } from "../src/store/store.js";
 import { toolsFor } from "../src/tools/registry.js";
@@ -204,6 +207,43 @@ function registerIpc() {
     ollama.baseUrl = ollamaUrl(config);
     for (const name of agents.keys()) if (!busy.has(name)) agents.delete(name);
   };
+  // ── Vault (bots use these; the UI and the model never get secrets back) ──
+  ipcMain.handle("vault:list", () => openVault(config).list());
+  ipcMain.handle("vault:save", (_e, input: Partial<VaultEntry> & { name: string; kind: VaultEntry["kind"] }) => {
+    const saved = openVault(config).upsert(input);
+    return saved;
+  });
+  ipcMain.handle("vault:remove", (_e, id: string) => openVault(config).remove(id));
+
+  // ── Web search ─────────────────────────────────────
+  ipcMain.handle("search:get", () => {
+    const secrets = openSecretStore(config.dataDir);
+    let active = "";
+    let problem = "";
+    try {
+      active = resolveSearch(config.search, secrets).provider;
+    } catch (e: any) {
+      problem = e.message;
+    }
+    return {
+      provider: config.search?.provider ?? "auto",
+      searxngUrl: config.search?.searxngUrl ?? "",
+      keys: Object.fromEntries(KEYED.map((p) => [p, !!secrets.get(searchKeyName(p))])),
+      active,
+      problem,
+    };
+  });
+  ipcMain.handle("search:save", (_e, s: { provider: SearchProvider; searxngUrl?: string; key?: { provider: SearchProvider; value: string } }) => {
+    const secrets = openSecretStore(config.dataDir);
+    if (s.key?.value) secrets.set(searchKeyName(s.key.provider), s.key.value.trim());
+    setSearchConfig(config.rootDir, { provider: s.provider, searxngUrl: s.searxngUrl?.trim() || undefined });
+    reloadConfig();
+  });
+  ipcMain.handle("search:forgetKey", (_e, provider: SearchProvider) => {
+    openSecretStore(config.dataDir).delete(searchKeyName(provider));
+  });
+  ipcMain.handle("search:test", async (_e, query: string) => webSearch(query, { config: config.search, secrets: openSecretStore(config.dataDir), max: 5 }));
+
   ipcMain.handle("ollama:status", async () => {
     const version = await ollama.version();
     const install = Ollama.detect();
@@ -391,7 +431,19 @@ function smokeTest(outPng: string) {
       await js(`(() => { const i = document.getElementById("input"); i.value = ${JSON.stringify(process.env.SLOPBOT_SMOKE_MSG ?? "How much did I spend on dining?")}; document.getElementById("composer").requestSubmit(); })()`);
     await wait(400);
     const during = await js(`document.getElementById("status-text").textContent`);
-    for (let i = 0; i < 600 && busy.size; i++) await wait(100);
+    let modalShot = false;
+    for (let i = 0; i < 600 && busy.size; i++) {
+      await wait(100);
+      // Dev-only: answer approval prompts, optionally capturing the first one.
+      if (process.env.SLOPBOT_SMOKE_APPROVE && (await js(`!document.getElementById("approval-modal").hidden`))) {
+        if (process.env.SLOPBOT_SMOKE_MODAL && !modalShot) {
+          await wait(300);
+          fs.writeFileSync(process.env.SLOPBOT_SMOKE_MODAL, (await w.webContents.capturePage()).toPNG());
+          modalShot = true;
+        }
+        await js(`document.getElementById("approval-${process.env.SLOPBOT_SMOKE_APPROVE === "no" ? "deny" : "allow"}").click()`);
+      }
+    }
     await wait(900);
     const after = await js(`({ status: document.getElementById("status-text").textContent, messages: [...document.querySelectorAll(".msg, .tool")].map(n => n.className + ": " + n.textContent.slice(0, 160)) })`);
     if (process.env.SLOPBOT_SMOKE_VIEW) {

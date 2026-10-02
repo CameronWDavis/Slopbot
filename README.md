@@ -92,6 +92,14 @@ Read-only tools run freely; everything else asks you first, and destructive tool
 
 Lots of connectors on a small local model? Bots automatically get only the tools relevant to your request, plus a `tools.find` tool to look up the rest (`maxTools` in the config or a bot's YAML; `auto` by default). Config lives in `slopbot.mcp.json` (same format as Claude Desktop). From the terminal: `npm run slopbot connectors`.
 
+## Vault: let bots use your accounts without seeing passwords 🔐
+
+Open **Vault** and add an API key or login, plus the websites it's for. It's encrypted on this Mac (the key lives in your Keychain, so the file is useless anywhere else). Bots see only the name; when one calls an API "with credential GitHub", SlopBot attaches the key, **only for the sites you listed**, after asking you, and scrubs it from anything that comes back.
+
+## Web search 🔎
+
+Bots get a `web.search` tool. It works with no setup (Basic: DuckDuckGo instant answers + Wikipedia), or add a free key for full web results in **Connectors → Web search**: Ollama web search, Brave, or Tavily, or point it at your own SearXNG.
+
 ## Drive your bots from Claude Code (MCP) 🔌
 
 SlopBot is also an MCP server, so Claude Code, Claude Desktop, or any MCP client can hand your bots tasks:

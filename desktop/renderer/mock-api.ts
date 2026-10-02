@@ -1,6 +1,6 @@
 // A fake window.slopbot so the renderer can be previewed in a plain browser (npm run desktop:preview).
 // The real app always uses the preload API.
-import type { AgentEvent, ApprovalRequest, McpServerDef, McpServerStatus, McpToolInfo, OllamaStatus, PullProgress, SlopbotApi } from "../api.js";
+import type { AgentEvent, ApprovalRequest, McpServerDef, McpServerStatus, McpToolInfo, OllamaStatus, PullProgress, SearchSettings, SlopbotApi, VaultEntryInfo } from "../api.js";
 
 export function createMockApi(): SlopbotApi {
   const eventSubs = new Set<(e: AgentEvent) => void>();
@@ -29,6 +29,10 @@ export function createMockApi(): SlopbotApi {
     pulling: [],
   };
   const cancelled = new Set<string>();
+  let vault: VaultEntryInfo[] = [
+    { id: "v1", name: "GitHub", kind: "api_key", domains: ["github.com"], sendAs: "bearer", bots: ["*"], createdAt: "", updatedAt: "", lastUsedAt: new Date(Date.now() - 3600e3).toISOString(), hasSecret: true },
+  ];
+  const search: SearchSettings = { provider: "auto", searxngUrl: "", keys: { ollama: false, brave: false, tavily: false }, active: "basic", problem: "" };
   const servers = new Map<string, McpServerStatus>([
     [
       "knowledge-graph",
@@ -132,6 +136,23 @@ export function createMockApi(): SlopbotApi {
       for (const [n, d] of Object.entries<McpServerDef>(map)) servers.set(n, { name: n, def: { ...d, bots: d.bots ?? bots, enabled: true }, state: "idle", tools: [] });
       return Object.keys(map);
     },
+    vaultList: async () => structuredClone(vault),
+    async vaultSave(input) {
+      if (!input.domains?.length) throw new Error("Add at least one website (domain) this credential is for");
+      const { secret, ...rest } = input as any;
+      const e = { ...vault.find((x) => x.id === input.id), ...rest, id: input.id ?? String(Math.random()), hasSecret: true, bots: input.bots ?? ["*"], createdAt: "", updatedAt: "" } as VaultEntryInfo;
+      vault = input.id ? vault.map((x) => (x.id === input.id ? e : x)) : [...vault, e];
+      return e;
+    },
+    vaultRemove: async (id) => void (vault = vault.filter((x) => x.id !== id)),
+    searchGet: async () => structuredClone(search),
+    searchSave: async (s) => {
+      search.provider = s.provider;
+      if (s.key?.value) search.keys[s.key.provider] = true;
+      search.active = s.provider === "auto" ? (Object.entries(search.keys).find(([, v]) => v)?.[0] ?? "basic") : s.provider;
+    },
+    searchForgetKey: async (p) => void (search.keys[p] = false),
+    searchTest: async () => ({ provider: search.active, results: [{ title: "Model Context Protocol", url: "https://en.wikipedia.org/wiki/Model_Context_Protocol", snippet: "" }] }),
     ollamaStatus: async () => structuredClone(ol),
     ollamaStart: async () => {
       await sleep(800);

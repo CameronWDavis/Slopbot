@@ -34,6 +34,7 @@
           <button class="view-btn" data-view="activity">Activity</button>
           <button class="view-btn" data-view="memory">Memory</button>
           <button class="view-btn" data-view="models">Models</button>
+          <button class="view-btn" data-view="vault">Vault</button>
           <button class="view-btn" data-view="connectors">Connectors <span class="count" id="connectors-count" hidden>0</span></button>
         </nav>
         <div class="sidebar-foot" id="foot"></div>
@@ -87,6 +88,18 @@
           <div class="list" id="models"></div>
         </section>
 
+        <section class="view" id="view-vault" hidden>
+          <div class="chat-head">
+            <div>
+              <h1>Vault</h1>
+              <p class="muted">Logins and API keys your bots can <strong>use but never see</strong>. Encrypted on this Mac with a key kept in your Keychain, so the file is useless anywhere else. Each one only works on the websites you list, and using it asks you first.</p>
+            </div>
+            <button class="primary small" id="vault-add">+ Add</button>
+          </div>
+          <div class="connector-error" id="vault-error" hidden></div>
+          <div class="list" id="vault-list"></div>
+        </section>
+
         <section class="view" id="view-connectors" hidden>
           <div class="chat-head">
             <div>
@@ -99,6 +112,7 @@
             </div>
           </div>
           <div class="list">
+            <div id="search-card"></div>
             <div class="section-label">Quick add</div>
             <div class="presets" id="presets"></div>
             <div class="section-label">Your servers</div>
@@ -156,6 +170,43 @@
           <button class="ghost" id="mcp-cancel">Cancel</button>
           <button class="ghost" id="mcp-test">Test connection</button>
           <button class="primary" id="mcp-save">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="vault-form" hidden>
+      <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="vault-form-title">
+        <div class="modal-tag">VAULT · ENCRYPTED ON THIS MAC</div>
+        <h2 id="vault-form-title">Add to vault</h2>
+        <label class="field"><span>Name</span><input id="vault-name" placeholder="e.g. GitHub" autocomplete="off" /></label>
+        <div class="segmented" id="vault-kind">
+          <button type="button" data-kind="api_key" class="active">API key / token</button>
+          <button type="button" data-kind="login">Username + password</button>
+        </div>
+        <label class="field"><span>Websites it may be sent to <em class="muted">(comma-separated; subdomains included)</em></span><input id="vault-domains" class="mono" placeholder="github.com" autocomplete="off" spellcheck="false" /></label>
+        <div id="vault-login-fields" hidden>
+          <label class="field"><span>Username</span><input id="vault-username" autocomplete="off" /></label>
+        </div>
+        <div class="field">
+          <span id="vault-secret-label">API key or token</span>
+          <div class="secret-row"><input id="vault-secret" type="password" class="mono" autocomplete="off" spellcheck="false" /><button type="button" class="ghost small" id="vault-show">Show</button></div>
+        </div>
+        <div id="vault-key-fields">
+          <div class="field">
+            <span>Send it as</span>
+            <select id="vault-sendas" class="bot-select">
+              <option value="bearer">Authorization: Bearer (most APIs)</option>
+              <option value="header">A custom header</option>
+              <option value="query">A URL query parameter</option>
+            </select>
+          </div>
+          <label class="field" id="vault-field-row" hidden><span>Header / parameter name</span><input id="vault-field" class="mono" autocomplete="off" spellcheck="false" /></label>
+        </div>
+        <div class="field"><span>Bots that can use it</span><div class="checks" id="vault-bots"></div></div>
+        <div class="connector-error" id="vault-form-error" hidden></div>
+        <div class="modal-actions">
+          <button class="ghost" id="vault-cancel">Cancel</button>
+          <button class="primary" id="vault-save">Save</button>
         </div>
       </div>
     </div>

@@ -46,6 +46,15 @@ export function ensureOllamaProvider(rootDir: string, baseUrl = "http://localhos
   return name;
 }
 
+/** Web search settings live under `search:` in slopbot.config.yaml (keys go in the secret store). */
+export function setSearchConfig(rootDir: string, search: { provider: string; searxngUrl?: string }) {
+  editYaml(ensureConfigFile(rootDir), (doc) => {
+    doc.setIn(["search", "provider"], search.provider);
+    if (search.searxngUrl) doc.setIn(["search", "searxngUrl"], search.searxngUrl);
+    else if (doc.hasIn(["search", "searxngUrl"])) doc.deleteIn(["search", "searxngUrl"]);
+  });
+}
+
 /** Set (or with null, remove) a bot's `model:` in its YAML file. */
 export function setBotModel(botFile: string, modelRef: string | null) {
   editYaml(botFile, (doc) => {

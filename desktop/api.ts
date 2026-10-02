@@ -103,6 +103,31 @@ export interface PullProgress {
   error?: string;
 }
 
+export interface VaultEntryInfo {
+  id: string;
+  name: string;
+  kind: "api_key" | "login";
+  domains: string[];
+  username?: string;
+  sendAs?: "bearer" | "header" | "query";
+  field?: string;
+  bots: string[];
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt?: string;
+  hasSecret: boolean;
+}
+
+export type SearchProvider = "auto" | "ollama" | "brave" | "tavily" | "searxng" | "basic";
+
+export interface SearchSettings {
+  provider: SearchProvider;
+  searxngUrl: string;
+  keys: Record<string, boolean>;
+  active: string;
+  problem: string;
+}
+
 export interface SlopbotApi {
   info(): Promise<{ dataDir: string; rootDir: string; homeDir: string; defaultModel: string; version: string; secrets: "keychain" | "libsecret" | "file" }>;
   listBots(): Promise<BotSummary[]>;
@@ -123,6 +148,13 @@ export interface SlopbotApi {
   mcpImport(json: string, bots: string[]): Promise<string[]>;
   mcpSignIn(name: string): Promise<McpServerStatus>;
   mcpSignOut(name: string): Promise<void>;
+  vaultList(): Promise<VaultEntryInfo[]>;
+  vaultSave(input: Partial<VaultEntryInfo> & { name: string; kind: VaultEntryInfo["kind"]; secret?: string }): Promise<VaultEntryInfo>;
+  vaultRemove(id: string): Promise<void>;
+  searchGet(): Promise<SearchSettings>;
+  searchSave(s: { provider: SearchProvider; searxngUrl?: string; key?: { provider: SearchProvider; value: string } }): Promise<void>;
+  searchForgetKey(provider: SearchProvider): Promise<void>;
+  searchTest(query: string): Promise<{ provider: string; results: { title: string; url: string; snippet: string }[] }>;
   ollamaStatus(): Promise<OllamaStatus>;
   ollamaStart(): Promise<string>;
   ollamaStop(): Promise<void>;

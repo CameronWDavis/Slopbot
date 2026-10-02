@@ -5,6 +5,7 @@ import { mountMascot } from "./mascot.js";
 import { createMockApi } from "./mock-api.js";
 import { createConnectors } from "./connectors.js";
 import { createModels } from "./models.js";
+import { createSearchCard, createVault } from "./vault-ui.js";
 
 declare global {
   interface Window {
@@ -48,6 +49,9 @@ const models_ = createModels(api, {
   },
   onWork: (s) => (s === "start" ? director?.workStarted() : director?.workFinished(s === "done")),
 });
+
+const vault = createVault(api, () => bots.map((b) => b.name));
+const searchCard = createSearchCard(api);
 
 async function refreshConnectorCount() {
   const n = (await api.mcpList()).filter((s) => s.def.enabled !== false).length;
@@ -167,7 +171,9 @@ async function selectBot(name: string) {
 
 function showView(view: string) {
   document.querySelectorAll<HTMLButtonElement>(".view-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
-  for (const v of ["chat", "approvals", "activity", "memory", "models", "connectors"]) $(`view-${v}`).hidden = v !== view;
+  for (const v of ["chat", "approvals", "activity", "memory", "models", "vault", "connectors"]) $(`view-${v}`).hidden = v !== view;
+  if (view === "vault") vault.load();
+  if (view === "connectors") searchCard.load();
   if (view === "models") models_.load();
   if (view === "connectors") connectors.load();
   if (view === "approvals") loadApprovals();
@@ -314,7 +320,10 @@ function showNextApproval() {
     return;
   }
   $("approval-title").textContent = req.tool;
-  $("approval-reason").textContent = `${req.bot} wants to run this (${req.reason}).`;
+  const cred = typeof req.args.credential === "string" ? req.args.credential : "";
+  $("approval-reason").textContent = cred
+    ? `${req.bot} wants to use your saved credential "${cred}" for this request. SlopBot attaches it; the bot never sees it. (${req.reason})`
+    : `${req.bot} wants to run this (${req.reason}).`;
   $("approval-args").textContent = JSON.stringify(req.args, null, 2);
   modal.hidden = false;
   $("approval-allow").focus();

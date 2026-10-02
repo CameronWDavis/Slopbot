@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
 import type { ProviderConfig } from "./providers/types.js";
+import type { SearchConfig } from "./search/search.js";
 import type { PolicyRule } from "./policy/policy.js";
 import { MissingSecretError, openSecretStore, resolveSecretRefs } from "./secrets.js";
 
@@ -25,6 +26,8 @@ export interface Config {
   smtp?: SmtpConfig;
   policy: { rules: PolicyRule[] };
   maxToolOutputChars: number;
+  /** Web search settings (keys live in the secret store as search.<provider>). */
+  search?: SearchConfig;
   /** Default tool budget per step: a number, or "auto" (20 for local models, 64 for hosted). */
   maxTools?: number | "auto";
 }
@@ -97,5 +100,6 @@ export function loadConfig(rootDir = process.env.SLOPBOT_HOME ? path.resolve(pro
     policy: { rules: raw.policy?.rules ?? [] },
     maxToolOutputChars: raw.maxToolOutputChars ?? 12_000,
     maxTools: typeof raw.maxTools === "number" ? raw.maxTools : "auto",
+    search: raw.search,
   };
 }

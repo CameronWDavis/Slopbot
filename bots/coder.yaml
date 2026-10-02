@@ -11,6 +11,8 @@ tools:
   - "fs.*"
   - "shell.run"
   - "http.fetch"
+  - "web.search"
+  - "vault.list"
   - "memory.*"
 maxSteps: 40
 # Point the bot at your projects. Relative paths resolve from the SlopBot folder.
