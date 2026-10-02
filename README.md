@@ -27,7 +27,18 @@ ollama pull qwen3:8b          # any tool-calling model: qwen3, llama3.1, mistral
 npm run slopbot ping
 ```
 
-**Hosted model:** put `OPENAI_API_KEY=...` / `ANTHROPIC_API_KEY=...` in `.env`, then set
+**Hosted model:** store your key in the Keychain and reference it from the config:
+
+```bash
+npm run slopbot secret set openai      # paste the key; input is hidden
+```
+
+```yaml
+providers:
+  openai: { type: openai, baseUrl: https://api.openai.com/v1, apiKey: "${secret:openai}" }
+```
+
+(A `.env` file with `OPENAI_API_KEY=...` also works.) Then set
 `defaultModel: openai/gpt-5` or `anthropic/claude-sonnet-5-5` (or `model:` on a single bot).
 
 ## Use it
@@ -77,7 +88,7 @@ Open **Connectors** in the desktop app to plug any MCP server into your bots:
 - **Paste JSON:** copy the `mcpServers` block from Claude Desktop, Cursor, or a server's README
 - **Test connection** shows the server's tools before you save, then pick which bots get it
 
-Read-only tools run freely; everything else asks you first, and destructive tools are flagged.
+Read-only tools run freely; everything else asks you first, and destructive tools are flagged. API keys and tokens you paste go into your **macOS Keychain** (system keyring on Linux), so `slopbot.mcp.json` only holds references like `${secret:mcp.github.header.Authorization}`.
 
 Lots of connectors on a small local model? Bots automatically get only the tools relevant to your request, plus a `tools.find` tool to look up the rest (`maxTools` in the config or a bot's YAML; `auto` by default). Config lives in `slopbot.mcp.json` (same format as Claude Desktop). From the terminal: `npm run slopbot connectors`.
 

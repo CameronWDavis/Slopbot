@@ -1232,6 +1232,9 @@ button {
   grid-template-columns: 1fr 1.4fr auto;
   gap: 6px;
 }
+.kv-row input.has-secret::placeholder {
+  color: var(--lime);
+}
 .kv-row input {
   font: 12.5px var(--mono);
   padding: 6px 8px;

@@ -143,11 +143,11 @@
         </div>
         <div id="mcp-command-fields">
           <label class="field"><span>Command</span><input id="mcp-cmd" class="mono" placeholder="npx -y @modelcontextprotocol/server-filesystem ~/Documents" autocomplete="off" spellcheck="false" /></label>
-          <div class="field"><span>Environment variables <em class="muted">(API keys; use ${NAME} to read from your .env)</em></span><div id="mcp-env"></div><button type="button" class="ghost small" id="mcp-add-env">+ Variable</button></div>
+          <div class="field"><span>Environment variables <em class="muted">(keys and tokens are stored in your Keychain, not the config file)</em></span><div id="mcp-env"></div><button type="button" class="ghost small" id="mcp-add-env">+ Variable</button></div>
         </div>
         <div id="mcp-url-fields" hidden>
           <label class="field"><span>Server URL</span><input id="mcp-url" class="mono" placeholder="https://example.com/mcp" autocomplete="off" spellcheck="false" /></label>
-          <div class="field"><span>Headers</span><div id="mcp-headers"></div><button type="button" class="ghost small" id="mcp-add-header">+ Header</button></div>
+          <div class="field"><span>Headers <em class="muted">(tokens are stored in your Keychain)</em></span><div id="mcp-headers"></div><button type="button" class="ghost small" id="mcp-add-header">+ Header</button></div>
         </div>
         <p class="note" id="mcp-note" hidden></p>
         <div class="field"><span>Bots that can use it</span><div class="checks" id="mcp-bots"></div></div>

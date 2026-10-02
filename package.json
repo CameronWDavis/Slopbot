@@ -15,7 +15,7 @@
     "dev": "tsx src/cli.ts",
     "build": "tsc -p .",
     "typecheck": "tsc -p . --noEmit && tsc -p tsconfig.desktop.json",
-    "test": "tsx --test test/*.test.ts",
+    "test": "SLOPBOT_SECRETS=file tsx --test test/*.test.ts",
     "desktop:build": "node desktop/build.mjs",
     "desktop": "node desktop/build.mjs && electron .",
     "desktop:preview": "node desktop/build.mjs && npx --yes http-server dist-desktop/renderer -p 5199 -c-1",

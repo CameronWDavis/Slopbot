@@ -179,3 +179,41 @@ export function openSecretStore(dataDir: string): SecretStore {
   cache.set(id, store);
   return store;
 }
+
+// ── secret references ───────────────────────────────────────────────
+// Config files hold `${secret:NAME}`; the value lives in the secret store and is resolved only in
+// the process that needs it (never sent to the UI or the model).
+
+export const SECRET_REF_RE = /\$\{secret:([A-Za-z0-9._:@-]{1,200})\}/g;
+export const isSecretRef = (v: string) => /^\$\{secret:[A-Za-z0-9._:@-]{1,200}\}$/.test(v);
+export const secretRef = (key: string) => `\${secret:${key}}`;
+
+export class MissingSecretError extends Error {
+  constructor(public key: string) {
+    super(`Secret "${key}" isn't in your ${process.platform === "darwin" ? "Keychain" : "secret store"}. Re-enter it (for a connector: Edit → paste the key again).`);
+  }
+}
+
+/** Replace every ${secret:NAME} in `s` with its stored value. */
+export function resolveSecretRefs(s: string, store: SecretStore): string {
+  return s.replace(SECRET_REF_RE, (_, key) => {
+    const v = store.get(key);
+    if (v === undefined) throw new MissingSecretError(key);
+    return v;
+  });
+}
+
+const SECRET_NAME = /(api[-_]?key|apikey|token|secret|passw|pwd|auth|credential|bearer|cookie|session|private[-_]?key|access[-_]?key|(^|[-_])pat($|[-_]))/i;
+const SECRET_PREFIX = /^(Bearer\s+\S|Basic\s+\S|sk-|sk_|rk_|pk_live|ghp_|gho_|ghu_|ghs_|ghr_|github_pat_|glpat-|xox[abpr]-|AKIA|ASIA|AIza|ya29\.|eyJ[A-Za-z0-9_-]{10,}\.|hf_|lin_api_|ntn_|secret_|shpat_|SG\.)/;
+
+/** Heuristic: should this env var / header / argument value live in the secret store? */
+export function looksSecret(name: string, value: string): boolean {
+  if (!value || value.includes("${")) return false; // empty, or already a reference
+  if (/^(\/|~|\.{1,2}\/|[A-Za-z]:\\)/.test(value)) return false; // a file path
+  if (/^(true|false|\d+)$/i.test(value)) return false;
+  if (/^Bearer\s*$/i.test(value)) return false; // placeholder waiting for a token
+  if (SECRET_PREFIX.test(value)) return true;
+  if (name && SECRET_NAME.test(name)) return true;
+  // Long, random-looking strings (no spaces/slashes, mixed letters and digits).
+  return value.length >= 24 && !/[\s/]/.test(value) && /[A-Za-z]/.test(value) && /\d/.test(value);
+}

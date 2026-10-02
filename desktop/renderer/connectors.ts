@@ -56,6 +56,10 @@ const PRESETS: Preset[] = [
   },
 ];
 
+const SECRET_REF = /^\$\{secret:[^}]+\}$/;
+/** Show stored secrets as a lock instead of their reference names. */
+const hideRefs = (s: string) => s.replace(/\$\{secret:[^}]+\}/g, "🔒");
+
 const RISK_LABEL: Record<string, string> = { read: "read-only", write: "writes", external: "asks first", dangerous: "destructive" };
 
 /** Split a command line into argv, honoring quotes. */
@@ -162,7 +166,7 @@ export function createConnectors(api: SlopbotApi, getBots: () => string[], getHo
         const card = el("div", `card connector ${s.state}`);
         const head = el("div", "card-head");
         const dot = el("span", `dot ${s.state === "connected" ? "" : s.state === "error" ? "err" : s.state === "connecting" || signingIn.has(s.name) ? "busy" : s.state === "needs_auth" ? "alert" : "off"}`);
-        const where = s.def.url ?? joinCommand([s.def.command ?? "", ...(s.def.args ?? [])]);
+        const where = hideRefs(s.def.url ?? joinCommand([s.def.command ?? "", ...(s.def.args ?? [])]));
         const sw = el("label", "switch");
         const cb = el("input");
         cb.type = "checkbox";
@@ -290,7 +294,12 @@ export function createConnectors(api: SlopbotApi, getBots: () => string[], getHo
       const vi = el("input");
       vi.placeholder = "value";
       vi.type = "password";
-      vi.value = v;
+      if (SECRET_REF.test(v)) {
+        // Stored in the Keychain: never shown. Leave blank to keep it, type to replace it.
+        vi.dataset.ref = v;
+        vi.placeholder = "🔒 saved in Keychain (type to replace)";
+        vi.classList.add("has-secret");
+      } else vi.value = v;
       vi.addEventListener("focus", () => (vi.type = "text"));
       vi.addEventListener("blur", () => (vi.type = "password"));
       const x = el("button", "ghost small", "✕");
@@ -307,7 +316,7 @@ export function createConnectors(api: SlopbotApi, getBots: () => string[], getHo
   const readKv = (id: string) =>
     Object.fromEntries(
       [...$(id).querySelectorAll<HTMLElement>(".kv-row")]
-        .map((r) => [...r.querySelectorAll("input")].map((i) => i.value))
+        .map((r) => [...r.querySelectorAll("input")].map((i) => i.value || i.dataset.ref || ""))
         .filter(([k]) => k.trim())
         .map(([k, v]) => [k.trim(), v]),
     );

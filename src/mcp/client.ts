@@ -15,7 +15,7 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { AuthStore, NeedsSignInError, SlopOAuthProvider, waitForAuthCode } from "./oauth.js";
 import type { Config } from "../config.js";
-import { openSecretStore } from "../secrets.js";
+import { isSecretRef, looksSecret, openSecretStore, resolveSecretRefs, SECRET_REF_RE, secretRef, type SecretStore } from "../secrets.js";
 import type { Risk, Tool } from "../tools/types.js";
 
 export const MCP_FILE = "slopbot.mcp.json";
@@ -78,10 +78,19 @@ export function riskFromAnnotations(a: { readOnlyHint?: boolean; destructiveHint
   return "external";
 }
 
-const interpolate = (s: string) => s.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, n) => process.env[n] ?? "");
+const interpolateEnv = (s: string) => s.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, n) => process.env[n] ?? "");
 const tilde = (s: string) => (s === "~" || s.startsWith("~/") ? path.join(os.homedir(), s.slice(1)) : s);
-const interpolateMap = (m?: Record<string, string>) =>
-  m ? Object.fromEntries(Object.entries(m).map(([k, v]) => [k, interpolate(String(v))])) : undefined;
+const SECRET_FLAG = /^--?(api[-_]?key|apikey|token|access[-_]?token|secret|password|pat|key|auth)$/i;
+
+/** All ${secret:...} keys a server definition references. */
+export function secretKeysIn(def: McpServerDef): string[] {
+  const keys = new Set<string>();
+  const scan = (v?: string) => {
+    for (const m of String(v ?? "").matchAll(SECRET_REF_RE)) keys.add(m[1]);
+  };
+  [def.url, def.command, ...(def.args ?? []), ...Object.values(def.env ?? {}), ...Object.values(def.headers ?? {})].forEach(scan);
+  return [...keys];
+}
 
 function resultToText(res: any): string {
   const parts: string[] = [];
@@ -109,6 +118,7 @@ export class McpManager {
   private errors = new Map<string, string>();
 
   readonly auth: AuthStore;
+  readonly secrets: SecretStore;
   private needsAuth = new Set<string>();
 
   /**
@@ -120,7 +130,13 @@ export class McpManager {
     private openUrl?: (url: string) => void | Promise<void>,
   ) {
     this.file = path.join(config.rootDir, MCP_FILE);
-    this.auth = new AuthStore(openSecretStore(config.dataDir), path.join(config.dataDir, "mcp-auth"));
+    this.secrets = openSecretStore(config.dataDir);
+    this.auth = new AuthStore(this.secrets, path.join(config.dataDir, "mcp-auth"));
+    try {
+      this.secureAll();
+    } catch (e) {
+      console.error(`Couldn't move connector secrets into the secret store: ${(e as Error).message}`);
+    }
   }
 
   // ── config file ──────────────────────────────────────
@@ -142,21 +158,112 @@ export class McpManager {
     if (!/^[A-Za-z0-9][A-Za-z0-9 _.-]{0,40}$/.test(name)) throw new Error("Name: letters, numbers, spaces, - _ . (max 40)");
     if (!def.command && !def.url) throw new Error("A server needs either a command or a URL");
     const servers = this.readServers();
+    const old = servers[previousName ?? name];
+    const secured = this.secure(name, def);
     if (previousName && previousName !== name) {
       delete servers[previousName];
       await this.disconnect(previousName);
     }
-    servers[name] = def;
+    servers[name] = secured;
     this.writeServers(servers);
+    // Drop secrets the old definition used that the new one no longer references.
+    if (old) for (const key of secretKeysIn(old)) if (!secretKeysIn(secured).includes(key) && this.ownsKey(previousName ?? name, key)) this.secrets.delete(key);
     await this.disconnect(name); // reconnect lazily with the new settings
   }
 
   async removeServer(name: string) {
     const servers = this.readServers();
+    const def = servers[name];
     delete servers[name];
     this.writeServers(servers);
     await this.disconnect(name);
     this.auth.clear(name);
+    if (def) for (const key of secretKeysIn(def)) if (this.ownsKey(name, key)) this.secrets.delete(key);
+  }
+
+  // ── secrets ──────────────────────────────────────────
+  private keyPrefix(server: string) {
+    return `mcp.${slug(server)}.`;
+  }
+
+  private ownsKey(server: string, key: string) {
+    return key.startsWith(this.keyPrefix(server));
+  }
+
+  /**
+   * Move anything secret-looking in a server definition (env values, headers, command arguments,
+   * URL query params) into the secret store, leaving ${secret:...} references behind. References
+   * to another server's keys (after a rename) are copied under this server's name.
+   */
+  secure(server: string, def: McpServerDef): McpServerDef {
+    const prefix = this.keyPrefix(server);
+    const store = (key: string, value: string) => {
+      const full = prefix + key.replace(/[^A-Za-z0-9._-]/g, "_");
+      this.secrets.set(full, value);
+      return secretRef(full);
+    };
+    // References to another connector's keys (e.g. after a rename) are copied under this name.
+    const rehome = (key: string, v: string) =>
+      v.replace(SECRET_REF_RE, (ref, k: string) => {
+        if (k.startsWith(prefix) || !k.startsWith("mcp.")) return ref;
+        const value = this.secrets.get(k);
+        return value === undefined ? ref : store(key, value);
+      });
+    const field = (key: string, name: string, v: string) => (v.includes("${") ? rehome(key, v) : looksSecret(name, v) ? store(key, v) : v);
+
+    const out: McpServerDef = { ...def };
+    if (def.env) out.env = Object.fromEntries(Object.entries(def.env).map(([k, v]) => [k, field(`env.${k}`, k, String(v))]));
+    if (def.headers) out.headers = Object.fromEntries(Object.entries(def.headers).map(([k, v]) => [k, field(`header.${k}`, k, String(v))]));
+    if (def.args) {
+      out.args = def.args.map((a, i) => {
+        if (a.includes("${")) return rehome(`arg.${i}`, a);
+        const eq = a.match(/^(--?[A-Za-z][\w-]*)=(.+)$/); // --token=abc
+        if (eq && (SECRET_FLAG.test(eq[1]) || looksSecret("", eq[2]))) return `${eq[1]}=${store(`arg.${i}`, eq[2])}`;
+        return (i > 0 && SECRET_FLAG.test(def.args![i - 1])) || looksSecret("", a) ? store(`arg.${i}`, a) : a; // --token abc
+      });
+    }
+    if (def.url) {
+      if (def.url.includes("${")) out.url = rehome("url", def.url);
+      else {
+        try {
+          const u = new URL(def.url);
+          let changed = false;
+          const query = [...u.searchParams].map(([k, v]) => {
+            const enc = encodeURIComponent(k);
+            if (!looksSecret(k, v)) return `${enc}=${encodeURIComponent(v)}`;
+            changed = true;
+            return `${enc}=${store(`url.${k}`, v)}`;
+          });
+          if (changed) out.url = `${u.origin}${u.pathname}?${query.join("&")}${u.hash}`;
+        } catch {
+          /* not a URL we can parse; leave it */
+        }
+      }
+    }
+    return out;
+  }
+
+  /** Secure every saved server (migrates plaintext keys written by older versions or by hand). */
+  secureAll(): number {
+    const servers = this.readServers();
+    let changed = 0;
+    for (const [name, def] of Object.entries(servers)) {
+      const secured = this.secure(name, def);
+      if (JSON.stringify(secured) !== JSON.stringify(def)) {
+        servers[name] = secured;
+        changed++;
+      }
+    }
+    if (changed) this.writeServers(servers);
+    return changed;
+  }
+
+  /** Resolve ${ENV} and ${secret:...} references at connect time. */
+  private resolve(s: string): string {
+    return resolveSecretRefs(interpolateEnv(s), this.secrets);
+  }
+  private resolveMap(m?: Record<string, string>) {
+    return m ? Object.fromEntries(Object.entries(m).map(([k, v]) => [k, this.resolve(String(v))])) : undefined;
   }
 
   /**
@@ -204,17 +311,17 @@ export class McpManager {
 
   private remoteOpts(name: string, def: McpServerDef, interactive = false) {
     return {
-      requestInit: { headers: interpolateMap(def.headers) },
+      requestInit: { headers: this.resolveMap(def.headers) },
       authProvider: this.usesOAuth(def) ? new SlopOAuthProvider(this.auth, name, interactive ? this.openUrl : undefined) : undefined,
     };
   }
 
   private makeTransport(name: string, def: McpServerDef, stderr: string[]): Transport {
-    if (def.url) return new StreamableHTTPClientTransport(new URL(def.url), this.remoteOpts(name, def));
+    if (def.url) return new StreamableHTTPClientTransport(new URL(this.resolve(def.url)), this.remoteOpts(name, def));
     const t = new StdioClientTransport({
       command: tilde(def.command!),
-      args: (def.args ?? []).map((a) => tilde(interpolate(a))),
-      env: { ...getDefaultEnvironment(), PATH: process.env.PATH ?? "", ...interpolateMap(def.env) },
+      args: (def.args ?? []).map((a) => tilde(this.resolve(a))),
+      env: { ...getDefaultEnvironment(), PATH: process.env.PATH ?? "", ...this.resolveMap(def.env) },
       cwd: def.cwd ? tilde(def.cwd) : undefined,
       stderr: "pipe",
     });
@@ -259,7 +366,7 @@ export class McpManager {
       }
       if (isAuthError(e)) throw this.usesOAuth(def) ? new NeedsSignInError(name) : new Error("Unauthorized (401): check the token in this server's Authorization header");
       // Older remote servers speak SSE instead of Streamable HTTP.
-      transport = new SSEClientTransport(new URL(def.url), this.remoteOpts(name, def));
+      transport = new SSEClientTransport(new URL(this.resolve(def.url)), this.remoteOpts(name, def));
       try {
         client = await attempt(transport);
       } catch (e2: any) {
@@ -372,7 +479,7 @@ export class McpManager {
     const waiter = waitForAuthCode(() => this.auth.read(name).state);
     try {
       const opts = this.remoteOpts(name, def, true);
-      const transport = new StreamableHTTPClientTransport(new URL(def.url), opts);
+      const transport = new StreamableHTTPClientTransport(new URL(this.resolve(def.url)), opts);
       const client = new Client({ name: "slopbot", version: "0.1.0" });
       try {
         await client.connect(transport); // already authorized (e.g. tokens refreshed)

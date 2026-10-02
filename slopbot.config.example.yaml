@@ -1,5 +1,7 @@
 # SlopBot configuration. Copy to slopbot.config.yaml (`npm run slopbot init`).
 # ${VAR} pulls from the environment or a .env file next to this one.
+# ${secret:NAME} pulls from your macOS Keychain / system keyring. Store one with:
+#   npm run slopbot secret set NAME
 
 # Model used by any bot that doesn't set `model:`. Format: <provider>/<model-id>
 defaultModel: ollama/qwen3:8b

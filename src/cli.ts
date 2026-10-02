@@ -9,6 +9,7 @@ import { CONFIG_FILE, loadConfig } from "./config.js";
 import { resolveModel } from "./providers/index.js";
 import { runScheduled, startDaemon } from "./scheduler/scheduler.js";
 import { McpManager } from "./mcp/client.js";
+import { openSecretStore } from "./secrets.js";
 import { Ollama, ollamaProviderName, ollamaUrl } from "./ollama/ollama.js";
 import { ensureOllamaProvider, setDefaultModel } from "./config-edit.js";
 import { Store } from "./store/store.js";
@@ -38,6 +39,8 @@ const HELP = `${c.bold("slopbot")}: open-source personal AI agents
   slopbot ping [provider/model]       check that a model responds
   slopbot mcp                         run as an MCP server (stdio) for Claude Code etc.
   slopbot connectors                  list MCP servers your bots use, and test them
+  slopbot secret set <name>           store an API key in the Keychain; use it as \${secret:<name>}
+  slopbot secret rm <name>            delete a stored secret
   slopbot models                      local Ollama models (and whether Ollama is running)
   slopbot pull <model> [--default]    download an Ollama model (optionally make it the default)
 `;
@@ -204,6 +207,25 @@ async function main() {
       return;
     }
 
+    case "secret": {
+      const [sub, name] = rest;
+      const store = openSecretStore(config.dataDir);
+      const where = store.kind === "keychain" ? "your macOS Keychain" : store.kind === "libsecret" ? "your system keyring" : `${config.dataDir}/secrets`;
+      if (sub === "set") {
+        need(name, "secret name");
+        const value = await readSecret(`Paste the value for ${name} (input hidden): `);
+        if (!value) throw new Error("Nothing entered");
+        store.set(name, value);
+        console.log(`${c.green("✓")} Saved ${name} in ${where}. Reference it in config as \${secret:${name}}`);
+      } else if (sub === "rm") {
+        store.delete(need(name, "secret name"));
+        console.log(`Removed ${name}.`);
+      } else if (sub === "check") {
+        console.log(store.get(need(name, "secret name")) === undefined ? `${name}: not set` : `${name}: set (in ${where})`);
+      } else console.log("Usage: slopbot secret set|rm|check <name>");
+      return;
+    }
+
     case "models": {
       const ollama = new Ollama(ollamaUrl(config));
       const v = await ollama.version();
@@ -274,6 +296,39 @@ async function main() {
     default:
       console.log(HELP);
   }
+}
+
+/** Read a secret without echoing it (TTY), or the whole of stdin when piped. */
+async function readSecret(prompt: string): Promise<string> {
+  if (!stdin.isTTY) {
+    let data = "";
+    for await (const chunk of stdin) data += chunk;
+    return data.trim();
+  }
+  process.stderr.write(prompt);
+  stdin.setRawMode(true);
+  stdin.resume();
+  let value = "";
+  return new Promise((resolve, reject) => {
+    const onData = (buf: Buffer) => {
+      for (const ch of buf.toString("utf8")) {
+        if (ch === "\r" || ch === "\n") {
+          stdin.setRawMode(false);
+          stdin.pause();
+          stdin.off("data", onData);
+          process.stderr.write("\n");
+          return resolve(value.trim());
+        }
+        if (ch === "\u0003") {
+          stdin.setRawMode(false);
+          return reject(new Error("Cancelled"));
+        }
+        if (ch === "\u007f") value = value.slice(0, -1);
+        else value += ch;
+      }
+    };
+    stdin.on("data", onData);
+  });
 }
 
 function need(v: string | undefined, what: string): string {
