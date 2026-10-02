@@ -1,0 +1,47 @@
+# SlopBot configuration. Copy to slopbot.config.yaml (`npm run slopbot init`).
+# ${VAR} pulls from the environment or a .env file next to this one.
+
+# Model used by any bot that doesn't set `model:`. Format: <provider>/<model-id>
+defaultModel: ollama/qwen3:8b
+
+providers:
+  # ── Local (no API key) ─────────────────────────────
+  ollama:
+    type: openai
+    baseUrl: http://localhost:11434/v1
+  lmstudio:
+    type: openai
+    baseUrl: http://localhost:1234/v1
+
+  # ── Hosted (bring your own key) ────────────────────
+  openai:
+    type: openai
+    baseUrl: https://api.openai.com/v1
+    apiKey: ${OPENAI_API_KEY}
+  anthropic:
+    type: anthropic
+    apiKey: ${ANTHROPIC_API_KEY}
+  openrouter:
+    type: openai
+    baseUrl: https://openrouter.ai/api/v1
+    apiKey: ${OPENROUTER_API_KEY}
+  groq:
+    type: openai
+    baseUrl: https://api.groq.com/openai/v1
+    apiKey: ${GROQ_API_KEY}
+
+# Outgoing email (for email.send and scheduled reports).
+# Gmail: host smtp.gmail.com, port 465, and an App Password (not your real password).
+# smtp:
+#   host: smtp.gmail.com
+#   port: 465
+#   user: ${SMTP_USER}
+#   pass: ${SMTP_PASS}
+#   from: "SlopBot <${SMTP_USER}>"
+#   to: ${SMTP_USER}          # default recipient ("me")
+
+# Global Custom Rules, checked after each bot's own `permissions`. First match wins.
+# action: allow | ask | deny
+policy:
+  rules:
+    - { tool: "email.send", action: ask }

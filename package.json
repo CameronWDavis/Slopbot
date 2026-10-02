@@ -1,0 +1,31 @@
+{
+  "name": "slopbot",
+  "version": "0.1.0",
+  "description": "Open-source, self-hostable personal AI agents. Bring your own model or run fully local.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "slopbot": "dist/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "slopbot": "tsx src/cli.ts",
+    "dev": "tsx src/cli.ts",
+    "build": "tsc -p .",
+    "typecheck": "tsc -p . --noEmit",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "croner": "^10.0.1",
+    "nodemailer": "^10.0.13",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/nodemailer": "^8.0.2",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}
