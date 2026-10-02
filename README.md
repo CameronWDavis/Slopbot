@@ -1,4 +1,8 @@
-# SlopBot 🤖
+<p align="center">
+  <img src="assets/branding/slopbot-logo.png" alt="SlopBot: Bag Buddy, a cheerful charcoal garbage-bag mascot, next to the cream and lime SlopBot wordmark" width="600">
+</p>
+
+# SlopBot
 
 Open-source, self-hosted **personal AI agents**: an open take on OpenAI *dots* and Meta *Muse*.
 Make a bot that manages your finances, codes on your machine, or emails you reports, and run it on
@@ -56,12 +60,12 @@ npm run slopbot activity -n 30                             # audit trail
 
 ## Desktop app 🖥️
 
-A native, cyberpunk-themed desktop app with **Bag Buddy**, an animated 3D mascot that reacts to what your bots are actually doing. He thinks while they work, celebrates when they finish, and plays paddle-ball if you leave him alone.
+A native desktop app with a cozy cream-and-lime look and **Bag Buddy**, an animated 3D mascot who reacts to what your bots are actually doing. He thinks while they work, celebrates when they finish, and plays paddle-ball if you leave him alone.
 
 ```bash
 npm run desktop               # build and launch
 npm run desktop:dist:mac      # → release/SlopBot-<version>-arm64.dmg
-npm run desktop:dist:win      # → release/SlopBot Setup <version>.exe (best built on Windows)
+npm run desktop:dist:win      # → release/SlopBot Setup <version>.exe
 npm run desktop:dist:linux    # → release/SlopBot-<version>.AppImage
 ```
 
@@ -151,6 +155,8 @@ schedules:
 ## Branding
 
 The approved green app icon and SlopBot logo are in [`assets/branding/`](assets/branding/README.md), with instructions for updating the README, desktop UI, and packaged application icons.
+
+The [UI design brief](assets/branding/UI-DESIGN-BRIEF.md) describes the planned Bag Buddy-inspired desktop restyle, including colors, components, mascot lighting, and implementation checks.
 
 ## Development
 

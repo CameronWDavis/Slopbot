@@ -160,8 +160,22 @@ export class Ollama {
   }
 
   // ── process management ────────────────────────────
-  static detect(): OllamaInstall {
+  static detect(platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env): OllamaInstall {
     const install: OllamaInstall = {};
+    if (platform === "win32") {
+      // The Windows installer puts both the tray app and the CLI here.
+      const dir = path.join(env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "Programs", "Ollama");
+      if (fs.existsSync(path.join(dir, "ollama app.exe"))) install.app = path.join(dir, "ollama app.exe");
+      if (fs.existsSync(path.join(dir, "ollama.exe"))) install.binary = path.join(dir, "ollama.exe");
+      if (!install.binary) {
+        try {
+          install.binary = execFileSync("where.exe", ["ollama"], { encoding: "utf8", windowsHide: true }).split(/\r?\n/)[0].trim() || undefined;
+        } catch {
+          /* not on PATH */
+        }
+      }
+      return install;
+    }
     for (const app of ["/Applications/Ollama.app", path.join(os.homedir(), "Applications/Ollama.app")]) {
       if (fs.existsSync(app)) install.app = app;
     }
@@ -182,8 +196,10 @@ export class Ollama {
     const install = Ollama.detect();
     if (process.platform === "darwin" && install.app) {
       spawnSync("open", ["-a", install.app]);
+    } else if (process.platform === "win32" && install.app) {
+      spawn(install.app, [], { detached: true, stdio: "ignore", windowsHide: true }).unref(); // tray app starts the server
     } else if (install.binary) {
-      this.spawned = spawn(install.binary, ["serve"], { detached: true, stdio: "ignore" });
+      this.spawned = spawn(install.binary, ["serve"], { detached: true, stdio: "ignore", windowsHide: true });
       this.spawned.unref();
     } else {
       throw new Error("Ollama isn't installed. Get it from https://ollama.com/download");
@@ -205,8 +221,13 @@ export class Ollama {
       } catch {}
       this.spawned = undefined;
     }
-    if (process.platform === "darwin") spawnSync("osascript", ["-e", 'if application "Ollama" is running then quit app "Ollama"']);
-    spawnSync("pkill", ["-f", "ollama serve"]);
+    if (process.platform === "win32") {
+      spawnSync("taskkill", ["/IM", "ollama app.exe", "/F"], { windowsHide: true });
+      spawnSync("taskkill", ["/IM", "ollama.exe", "/F"], { windowsHide: true });
+    } else {
+      if (process.platform === "darwin") spawnSync("osascript", ["-e", 'if application "Ollama" is running then quit app "Ollama"']);
+      spawnSync("pkill", ["-f", "ollama serve"]);
+    }
     const until = Date.now() + timeoutMs;
     while (Date.now() < until && (await this.version())) await new Promise((r) => setTimeout(r, 300));
     if (await this.version()) throw new Error("Ollama is still running");

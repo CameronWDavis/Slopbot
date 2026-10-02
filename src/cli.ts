@@ -223,7 +223,14 @@ async function main() {
     case "secret": {
       const [sub, name] = rest;
       const store = openSecretStore(config.dataDir);
-      const where = store.kind === "keychain" ? "your macOS Keychain" : store.kind === "libsecret" ? "your system keyring" : `${config.dataDir}/secrets`;
+      const where =
+        store.kind === "keychain"
+          ? "your macOS Keychain"
+          : store.kind === "dpapi"
+            ? "Windows-encrypted storage (DPAPI)"
+            : store.kind === "libsecret"
+              ? "your system keyring"
+              : `${config.dataDir}/secrets`;
       if (sub === "set") {
         need(name, "secret name");
         const value = await readSecret(`Paste the value for ${name} (input hidden): `);

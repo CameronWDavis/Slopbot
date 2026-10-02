@@ -105,35 +105,27 @@ export async function mountMascot(container: HTMLElement, base = "assets/bag-bud
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.1;
+  renderer.toneMappingExposure = 1.0;
   container.append(renderer.domElement);
 
   const scene = new THREE.Scene();
   scene.add(gltf.scene);
 
-  // A soft studio environment gives the satin plastic real reflections, so the charcoal body
-  // reads as a shape instead of a dark silhouette.
+  // Neutral, warm studio light: he should read as charcoal plastic with cream eyes, the way the
+  // approved icon looks, not as a glowing recolored robot.
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  scene.environmentIntensity = 0.22;
+  scene.environmentIntensity = 0.3;
   pmrem.dispose();
 
-  scene.add(new THREE.HemisphereLight(0xffe6fb, 0x1a0b2e, 0.9));
-  // Key and fill from the front so the face and cream eyes pop.
-  const key = new THREE.DirectionalLight(0xffffff, 2.6);
-  key.position.set(2.5, 4, 6);
-  const fill = new THREE.DirectionalLight(0xd9c8ff, 0.9);
-  fill.position.set(-3, 1.5, 5);
-  // The cyberpunk part: strong hot-pink and violet rims from behind outline the silhouette.
-  const rimPink = new THREE.DirectionalLight(0xff2bd6, 8);
-  rimPink.position.set(-4, 3, -5);
-  const rimViolet = new THREE.DirectionalLight(0x8a5cff, 8);
-  rimViolet.position.set(4.5, 3.5, -4.5);
-  const top = new THREE.DirectionalLight(0xc9b6ff, 2.2);
-  top.position.set(0, 7, -2);
-  const under = new THREE.PointLight(0xff2bd6, 2.5, 6);
-  under.position.set(0, 0.2, 2);
-  scene.add(key, fill, rimPink, rimViolet, top, under);
+  scene.add(new THREE.HemisphereLight(0xfff8ec, 0xd9d2c2, 1.0));
+  const key = new THREE.DirectionalLight(0xfff4e6, 2.4); // soft key from upper front-right
+  key.position.set(3, 5, 6);
+  const fill = new THREE.DirectionalLight(0xf2efe6, 0.9); // gentle fill from the left
+  fill.position.set(-4, 2, 5);
+  const rim = new THREE.DirectionalLight(0xffffff, 1.4); // quiet back light to separate him from the wall
+  rim.position.set(-1, 4, -6);
+  scene.add(key, fill, rim);
 
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
   camera.position.set(3, 2.5, 8);
@@ -148,7 +140,7 @@ export async function mountMascot(container: HTMLElement, base = "assets/bag-bud
     Object.assign(camera, { left: -halfW, right: halfW, top: halfH, bottom: -halfH });
     camera.updateProjectionMatrix();
     renderer.setSize(w, h, false);
-    // Let the CSS neon floor ring sit exactly where the feet touch the ground.
+    // Put the soft contact shadow exactly where the feet touch the ground.
     const g = GROUND.clone().project(camera);
     container.style.setProperty("--floor-y", `${((1 - g.y) / 2) * h}px`);
     container.style.setProperty("--floor-w", `${(2.4 / (halfW * 2)) * w}px`);

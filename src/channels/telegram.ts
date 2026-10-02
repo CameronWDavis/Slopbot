@@ -93,6 +93,7 @@ export class TelegramChannel {
   private pendingAsks = new Map<string, { resolve: (a: ApprovalAnswer) => void; messageId?: number; text: string; timer: NodeJS.Timeout }>();
   private approvalTimer?: NodeJS.Timeout;
   private currentBot = "";
+  private retryTimer?: NodeJS.Timeout;
 
   constructor(
     private opts: {
@@ -104,6 +105,7 @@ export class TelegramChannel {
       onStatus?: (s: TelegramStatus) => void;
       log?: (msg: string) => void;
       approvalPollMs?: number;
+      retryMs?: number;
     },
   ) {
     this.stateFile = path.join(opts.config.dataDir, "channels", "telegram.json");
@@ -151,12 +153,20 @@ export class TelegramChannel {
   // ── Telegram Bot API ──────────────────────────────
   private async api<T = any>(method: string, body: Record<string, unknown> = {}, signal?: AbortSignal, token = this.token): Promise<T> {
     if (!token) throw new Error("No Telegram bot token");
-    const res = await fetch(`${this.opts.apiBase ?? "https://api.telegram.org"}/bot${token}/${method}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-      signal: signal ?? AbortSignal.timeout(40_000),
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${this.opts.apiBase ?? "https://api.telegram.org"}/bot${token}/${method}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: signal ?? AbortSignal.timeout(40_000),
+      });
+    } catch (e: any) {
+      if (signal?.aborted) throw e;
+      const err = new Error("Can't reach Telegram. Check your internet connection; SlopBot will keep trying.");
+      (err as any).code = "NETWORK";
+      throw err;
+    }
     const data: any = await res.json().catch(() => ({ ok: false, description: `HTTP ${res.status}` }));
     if (!data.ok) {
       const err = new Error(data.error_code === 401 ? "Telegram rejected the bot token (401). Copy it again from @BotFather." : `Telegram ${method}: ${data.description ?? res.status}`);
@@ -264,6 +274,12 @@ export class TelegramChannel {
       this.lastError = e.message;
       this.lock.release();
       this.lock = null;
+      // Offline or Telegram hiccup: try again shortly instead of waiting for the user to toggle.
+      if (e.code === "NETWORK" || (e.code >= 500 && e.code < 600)) {
+        clearTimeout(this.retryTimer);
+        this.retryTimer = setTimeout(() => void this.start(), this.opts.retryMs ?? 30_000);
+        this.retryTimer.unref?.();
+      }
       this.opts.onStatus?.(this.status());
       return false;
     }
@@ -276,6 +292,7 @@ export class TelegramChannel {
   }
 
   async stop() {
+    clearTimeout(this.retryTimer);
     this.abort?.abort();
     clearInterval(this.approvalTimer);
     for (const p of this.pendingAsks.values()) {

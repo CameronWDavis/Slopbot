@@ -2,6 +2,8 @@
 
 The user selected the **fun green app icon** and the **original cream-and-lime SlopBot logo**. These two files are the approved branding masters. The cyan/magenta cyberpunk icon was explicitly rejected; do not substitute it or recolor these assets to match the desktop UI's neon theme.
 
+For the full desktop restyle, read the [UI design brief](UI-DESIGN-BRIEF.md). It covers the proposed palette, typography, components, mascot lighting, source files and acceptance checks.
+
 ## Approved files
 
 | File | Actual dimensions | Background | Use |

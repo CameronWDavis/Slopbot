@@ -143,7 +143,7 @@ export interface TelegramStatus {
 }
 
 export interface SlopbotApi {
-  info(): Promise<{ dataDir: string; rootDir: string; homeDir: string; defaultModel: string; version: string; secrets: "keychain" | "libsecret" | "file" }>;
+  info(): Promise<{ dataDir: string; rootDir: string; homeDir: string; defaultModel: string; version: string; secrets: "keychain" | "dpapi" | "libsecret" | "file" }>;
   listBots(): Promise<BotSummary[]>;
   listModels(): Promise<string[]>;
   send(bot: string, text: string, model?: string): Promise<void>;

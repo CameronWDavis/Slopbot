@@ -59,3 +59,5 @@ const api: SlopbotApi = {
 };
 
 contextBridge.exposeInMainWorld("slopbot", api);
+// Lets the UI leave room for the native window controls (traffic lights / caption buttons).
+contextBridge.exposeInMainWorld("slopbotPlatform", process.platform);

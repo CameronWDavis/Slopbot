@@ -26,9 +26,11 @@ copy("desktop/renderer/styles.css", "renderer/styles.css");
 copy("assets/bag-buddy/bag-buddy.glb", "renderer/assets/bag-buddy/bag-buddy.glb");
 copy("assets/bag-buddy/manifest.json", "renderer/assets/bag-buddy/manifest.json");
 copy("assets/bag-buddy/previews/idle.png", "renderer/assets/bag-buddy/idle.png");
-for (const f of ["chakra-petch-latin-400-normal", "chakra-petch-latin-600-normal", "chakra-petch-latin-700-normal"]) {
-  copy(`node_modules/@fontsource/chakra-petch/files/${f}.woff2`, `renderer/fonts/${f}.woff2`);
-}
+// Approved branding (derivatives come from `npm run branding`, which resizes the masters).
+copy("assets/branding/generated/logo-480.png", "renderer/assets/branding/logo-480.png");
+copy("assets/branding/generated/icon-64.png", "renderer/assets/branding/icon-64.png");
+copy("assets/branding/generated/icon-256.png", "renderer/assets/branding/icon-256.png");
+copy("assets/branding/generated/icon-mac-1024.png", "branding/icon-mac-1024.png"); // dev Dock icon (not web-served)
 for (const f of ["jetbrains-mono-latin-400-normal", "jetbrains-mono-latin-600-normal"]) {
   copy(`node_modules/@fontsource/jetbrains-mono/files/${f}.woff2`, `renderer/fonts/${f}.woff2`);
 }

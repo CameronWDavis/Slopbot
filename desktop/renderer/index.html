@@ -8,18 +8,19 @@
       content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' blob: data:"
     />
     <title>SlopBot</title>
+    <link rel="icon" href="assets/branding/icon-64.png" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div class="app">
       <header class="titlebar">
         <div class="brand">
-          <span class="brand-mark" data-text="SLOPBOT">SLOPBOT</span>
-          <span class="brand-sub">// personal agents</span>
+          <img class="brand-logo" src="assets/branding/logo-480.png" alt="SlopBot" width="150" height="50" />
         </div>
         <div class="titlebar-right">
+          <span class="status-chip" aria-live="polite"><span class="dot" id="status-dot-mini"></span><span id="status-text-mini">Ready</span></span>
           <span class="pill" id="model-pill">model: …</span>
-          <button class="ghost small" id="open-data" title="Open data folder">data ↗</button>
+          <button class="ghost small" id="open-data" title="Open the data folder">Data folder ↗</button>
         </div>
       </header>
 
@@ -52,13 +53,13 @@
           </div>
           <div class="thread" id="thread" aria-live="polite"></div>
           <form class="composer" id="composer">
-            <textarea id="input" rows="1" placeholder="Tell your bot what to do…  (Enter to send, Shift+Enter for a new line)"></textarea>
+            <textarea id="input" rows="1" placeholder="What are we tackling? (Enter to send, Shift+Enter for a new line)" aria-label="Message"></textarea>
             <div class="composer-row">
               <label class="model-select">
                 <span>model</span>
                 <select id="model"></select>
               </label>
-              <button type="submit" class="primary" id="send">Send ⏎</button>
+              <button type="submit" class="primary" id="send">Send</button>
             </div>
           </form>
         </section>
@@ -133,11 +134,10 @@
       </main>
 
       <section class="stage" aria-label="Bag Buddy">
-        <div class="stage-grid"></div>
-        <div class="mascot" id="mascot" title="Say hi"><div class="stage-floor"></div></div>
+        <div class="mascot" id="mascot" title="Say hi to Bag Buddy"><div class="stage-floor"></div></div>
         <div class="stage-status">
           <span class="dot" id="status-dot"></span>
-          <span id="status-text">BOOTING</span>
+          <span id="status-text">Waking up…</span>
         </div>
         <div class="stage-caption" id="stage-caption"></div>
       </section>
@@ -145,7 +145,7 @@
 
     <div class="modal-backdrop" id="approval-modal" hidden>
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="approval-title">
-        <div class="modal-tag">APPROVAL REQUIRED</div>
+        <div class="modal-tag">Needs your OK</div>
         <h2 id="approval-title"></h2>
         <p class="muted" id="approval-reason"></p>
         <pre class="code" id="approval-args"></pre>
@@ -159,7 +159,7 @@
 
     <div class="modal-backdrop" id="mcp-form" hidden>
       <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="mcp-form-title">
-        <div class="modal-tag">MCP SERVER</div>
+        <div class="modal-tag">MCP server</div>
         <h2 id="mcp-form-title">Add MCP server</h2>
         <label class="field"><span>Name</span><input id="mcp-name" placeholder="e.g. github" autocomplete="off" /></label>
         <div class="segmented" id="mcp-kind">
@@ -187,7 +187,7 @@
 
     <div class="modal-backdrop" id="vault-form" hidden>
       <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="vault-form-title">
-        <div class="modal-tag">VAULT · ENCRYPTED ON THIS MAC</div>
+        <div class="modal-tag">Vault · encrypted on this computer</div>
         <h2 id="vault-form-title">Add to vault</h2>
         <label class="field"><span>Name</span><input id="vault-name" placeholder="e.g. GitHub" autocomplete="off" /></label>
         <div class="segmented" id="vault-kind">
@@ -224,7 +224,7 @@
 
     <div class="modal-backdrop" id="mcp-import" hidden>
       <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="mcp-import-title">
-        <div class="modal-tag">IMPORT</div>
+        <div class="modal-tag">Import</div>
         <h2 id="mcp-import-title">Paste MCP JSON</h2>
         <p class="muted">Paste an <code>mcpServers</code> block from Claude Desktop, Cursor, or a server's README. Every server in it is added for all bots.</p>
         <textarea id="mcp-json" class="code json-input" spellcheck="false" placeholder='{

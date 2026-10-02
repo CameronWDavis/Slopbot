@@ -1,5 +1,7 @@
 // OS-backed secret storage, shared by the desktop app, the CLI, and `slopbot mcp`.
 //   macOS → login Keychain via /usr/bin/security (secrets go over stdin as hex, never in argv)
+//   Windows → DPAPI (CurrentUser) via PowerShell: files under <data>/secrets that only this
+//             Windows login can decrypt
 //   Linux → libsecret via secret-tool (GNOME Keyring / KWallet), when installed
 //   else  → files under <data>/secrets, readable only by the user (0600)
 // Force the file backend with SLOPBOT_SECRETS=file (e.g. headless servers, tests).
@@ -8,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 export interface SecretStore {
-  readonly kind: "keychain" | "libsecret" | "file";
+  readonly kind: "keychain" | "dpapi" | "libsecret" | "file";
   get(key: string): string | undefined;
   set(key: string, value: string): void;
   delete(key: string): void;
@@ -105,6 +107,77 @@ export class MacKeychain implements SecretStore {
   }
 }
 
+/** Runs a PowerShell script with `input` on stdin and returns stdout. Swappable for tests. */
+export type PsRunner = (script: string, input: string) => string;
+
+export const runPowerShell: PsRunner = (script, input) => {
+  // -EncodedCommand keeps quoting out of the picture; the secret itself only travels over stdin.
+  const encoded = Buffer.from(script, "utf16le").toString("base64");
+  const r = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded], {
+    input,
+    encoding: "utf8",
+    windowsHide: true,
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  if (r.error) throw r.error;
+  if (r.status !== 0) throw new Error(`PowerShell failed: ${(r.stderr || r.stdout).trim().split("\n")[0]}`);
+  return r.stdout.trim();
+};
+
+const DPAPI_SCRIPT = (op: "Protect" | "Unprotect") => `$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Security
+$data = [Convert]::FromBase64String([Console]::In.ReadToEnd().Trim())
+$entropy = [Text.Encoding]::UTF8.GetBytes('SlopBot secret store v1')
+$out = [Security.Cryptography.ProtectedData]::${op}($data, $entropy, [Security.Cryptography.DataProtectionScope]::CurrentUser)
+[Console]::Out.Write([Convert]::ToBase64String($out))`;
+
+/**
+ * Windows: values are encrypted with DPAPI for the current Windows user (the same mechanism
+ * browsers use for saved passwords), so the files are useless to other accounts or machines.
+ */
+export class WinDpapi implements SecretStore {
+  readonly kind = "dpapi";
+  private cache = new Map<string, string | undefined>();
+
+  constructor(
+    private dir: string,
+    private ps: PsRunner = runPowerShell,
+  ) {}
+
+  private file(key: string) {
+    checkKey(key);
+    return path.join(this.dir, `${key.replace(/[:@]/g, "_")}.dpapi`);
+  }
+
+  get(key: string) {
+    if (this.cache.has(key)) return this.cache.get(key);
+    let value: string | undefined;
+    try {
+      const blob = fs.readFileSync(this.file(key), "utf8").trim();
+      value = Buffer.from(this.ps(DPAPI_SCRIPT("Unprotect"), blob), "base64").toString("utf8");
+    } catch (e: any) {
+      if (e.code !== "ENOENT") throw new Error(`Couldn't decrypt secret "${key}" (was it created by another Windows user?): ${e.message}`);
+    }
+    this.cache.set(key, value);
+    return value;
+  }
+
+  set(key: string, value: string) {
+    const blob = this.ps(DPAPI_SCRIPT("Protect"), Buffer.from(value, "utf8").toString("base64"));
+    if (!/^[A-Za-z0-9+/=]+$/.test(blob)) throw new Error("DPAPI returned unexpected output");
+    fs.mkdirSync(this.dir, { recursive: true, mode: 0o700 });
+    const f = this.file(key);
+    fs.writeFileSync(`${f}.tmp`, blob, { mode: 0o600 });
+    fs.renameSync(`${f}.tmp`, f);
+    this.cache.set(key, value);
+  }
+
+  delete(key: string) {
+    fs.rmSync(this.file(key), { force: true });
+    this.cache.set(key, undefined);
+  }
+}
+
 export class LibSecret implements SecretStore {
   readonly kind = "libsecret";
   constructor(private service = SERVICE) {}
@@ -174,6 +247,7 @@ export function openSecretStore(dataDir: string): SecretStore {
   let store = cache.get(id);
   if (store) return store;
   if (mode !== "file" && process.platform === "darwin" && fs.existsSync("/usr/bin/security")) store = new MacKeychain();
+  else if (mode !== "file" && process.platform === "win32") store = new WinDpapi(path.join(dataDir, "secrets"));
   else if (mode !== "file" && process.platform === "linux" && hasCommand("secret-tool")) store = new LibSecret();
   else store = new FileSecrets(path.join(dataDir, "secrets"));
   cache.set(id, store);
@@ -190,7 +264,7 @@ export const secretRef = (key: string) => `\${secret:${key}}`;
 
 export class MissingSecretError extends Error {
   constructor(public key: string) {
-    super(`Secret "${key}" isn't in your ${process.platform === "darwin" ? "Keychain" : "secret store"}. Re-enter it (for a connector: Edit → paste the key again).`);
+    super(`Secret "${key}" isn't in your ${process.platform === "darwin" ? "Keychain" : process.platform === "win32" ? "Windows secret store" : "secret store"}. Re-enter it (for a connector: Edit → paste the key again).`);
   }
 }
 

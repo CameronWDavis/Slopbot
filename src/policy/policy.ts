@@ -31,6 +31,15 @@ const HARD_DENY_SHELL = [
   /\bsudo\b/,
   /\bcurl\b[^|]*\|\s*(ba|z)?sh\b/,
   /\bwget\b[^|]*\|\s*(ba|z)?sh\b/,
+  // Windows / PowerShell equivalents
+  /\bformat(\.com)?\s+[a-z]:/i,
+  /\b(rd|rmdir)\s+(\/[sq]\s+)+["']?[a-z]:\\?["']?\s*$/i,
+  /\bdel\s+(\/[fsq]\s+)+["']?[a-z]:\\\*?/i,
+  // Remove-Item … -Recurse on a drive root or the home folder, in either argument order
+  /\b(Remove-Item|ri|rm)\b(?=[^;|]*\s-Recurse\b)[^;|]*\s["']?([a-z]:\\?|~|\$env:USERPROFILE|\$HOME)["']?(\\\*)?(\s|$)/i,
+  /\b(Stop-Computer|Restart-Computer|diskpart|bcdedit)\b/i,
+  /\bStart-Process\b[^|;]*-Verb\s+RunAs/i,
+  /\b(iwr|irm|Invoke-WebRequest|Invoke-RestMethod)\b[^|]*\|\s*(iex|Invoke-Expression)\b/i,
 ];
 
 const RANK: Record<Action, number> = { allow: 0, ask: 1, deny: 2 };

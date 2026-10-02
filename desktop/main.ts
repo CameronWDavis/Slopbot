@@ -360,13 +360,20 @@ function registerIpc() {
 
 function createWindow() {
   win = new BrowserWindow({
+    icon: path.join(rendererDir, "assets", "branding", "icon-256.png"), // Windows/Linux window + taskbar
     width: 1360,
     height: 860,
     minWidth: 980,
     minHeight: 640,
     title: "SlopBot",
-    backgroundColor: "#07040d",
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    backgroundColor: "#f5f1e8", // matches the canvas, so there's no flash of the old theme
+    // macOS: traffic lights over the charcoal titlebar. Windows: native caption buttons drawn
+    // over it in matching colors. Linux keeps its regular frame.
+    ...(process.platform === "darwin"
+      ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { x: 20, y: 24 } }
+      : process.platform === "win32"
+        ? { titleBarStyle: "hidden" as const, titleBarOverlay: { color: "#262822", symbolColor: "#f5f1e8", height: 64 } }
+        : {}),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -410,6 +417,8 @@ app.on("before-quit", () => {
 
 app.whenReady().then(() => {
   adoptShellPath();
+  // In development the Dock shows Electron's icon; packaged builds use icon.icns from electron-builder.
+  if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(path.join(__dirname, "branding", "icon-mac-1024.png"));
   home = resolveHome();
   config = loadConfig(home);
   ollama = new Ollama(ollamaUrl(config));
@@ -450,6 +459,8 @@ app.whenReady().then(() => {
  */
 function smokeTest(outPng: string) {
   const w = win!;
+  const size = process.env.SLOPBOT_SMOKE_SIZE?.match(/^(\d+)x(\d+)$/);
+  if (size) w.setContentSize(Number(size[1]), Number(size[2]));
   w.webContents.once("did-finish-load", async () => {
     const js = (code: string) => w.webContents.executeJavaScript(code);
     const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));

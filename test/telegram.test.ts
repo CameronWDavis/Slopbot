@@ -245,6 +245,21 @@ test("only one process can poll the same bot", async () => {
   assert.match(second.status().error!, /already connected to Telegram/);
 });
 
+test("offline at startup: a clear message, then it connects by itself when the network is back", async () => {
+  const { config, store, secrets } = await setup();
+  secrets.set("channel.telegram.token", TOKEN);
+  fs.mkdirSync(path.join(config.dataDir, "channels"), { recursive: true });
+  fs.writeFileSync(path.join(config.dataDir, "channels", "telegram.json"), JSON.stringify({ enabled: true, botUsername: "SlopTestBot", notifiedApprovals: [] }));
+  let base = "http://127.0.0.1:9"; // nothing listens here
+  const ch = new TelegramChannel({ config, store, secrets, approvalPollMs: 1e9, retryMs: 100, get apiBase() { return base; } } as any);
+  channels.push(ch);
+  assert.equal(await ch.start(), false);
+  assert.match(ch.status().error!, /Can't reach Telegram/);
+  base = tgBase; // network back
+  await waitFor(() => ch.status().running || undefined);
+  assert.equal(ch.status().error, undefined);
+});
+
 test("formatting helpers", () => {
   assert.equal(toTelegramHtml("a < b & **c**\n```js\nx<1\n```"), "a &lt; b &amp; <b>c</b>\n<pre>x&lt;1</pre>");
   const parts = chunk("x".repeat(3000) + "\n\n" + "y".repeat(3000));

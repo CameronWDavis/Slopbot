@@ -11,6 +11,7 @@ import { createChannels } from "./channels-ui.js";
 declare global {
   interface Window {
     slopbot?: SlopbotApi;
+    slopbotPlatform?: string;
   }
 }
 
@@ -70,22 +71,25 @@ const approvalQueue: ApprovalRequest[] = [];
 
 // ── mascot ────────────────────────────────────────────
 const STATUS: Record<string, { text: string; dot: string }> = {
-  idle: { text: "ONLINE", dot: "" },
-  greeting: { text: "HELLO, HUMAN", dot: "" },
-  working: { text: "THINKING…", dot: "busy" },
-  thinking: { text: "THINKING…", dot: "busy" },
-  success: { text: "TASK COMPLETE", dot: "" },
-  playful_mishap: { text: "OOPS — SEE CHAT", dot: "alert" },
-  surprised: { text: "NEEDS YOUR OK", dot: "alert" },
-  amused: { text: "LOL", dot: "" },
-  bored: { text: "BORED…", dot: "" },
-  sleepy: { text: "ZZZ", dot: "sleep" },
+  idle: { text: "Ready", dot: "" },
+  greeting: { text: "Hi there!", dot: "" },
+  working: { text: "Working on it…", dot: "busy" },
+  thinking: { text: "Working on it…", dot: "busy" },
+  success: { text: "All done", dot: "" },
+  playful_mishap: { text: "Hit a snag, see chat", dot: "err" },
+  surprised: { text: "Needs your OK", dot: "alert" },
+  amused: { text: "Haha", dot: "" },
+  bored: { text: "Killing time", dot: "" },
+  sleepy: { text: "Napping", dot: "sleep" },
 };
 
 function setStatus(state: string) {
   const s = STATUS[state] ?? STATUS.idle;
-  $("status-text").textContent = s.text;
-  $("status-dot").className = `dot ${s.dot}`;
+  // Same status in the nook and (for narrow windows) the titlebar chip.
+  for (const [text, dot] of [["status-text", "status-dot"], ["status-text-mini", "status-dot-mini"]]) {
+    $(text).textContent = s.text;
+    $(dot).className = `dot ${s.dot}`;
+  }
 }
 
 async function initMascot() {
@@ -136,14 +140,19 @@ const SUGGESTIONS: Record<string, string[]> = {
     "How much did I spend on dining in September?",
     "Remember my monthly grocery budget is $300",
   ],
-  coder: ["List the files in my workspace", "Write a hello.py that prints a cyberpunk banner, then run it"],
+  coder: ["List the files in my workspace", "Write a hello.py that prints a friendly banner, then run it"],
   reporter: ["Fetch https://news.ycombinator.com and give me the 5 most interesting stories"],
 };
 
 function emptyState(bot: string) {
   const box = el("div", "empty");
   box.dataset.empty = "1";
-  box.append(el("h2", "", `Jack in to ${bot}`), el("p", "", bots.find((b) => b.name === bot)?.description ?? ""));
+  const art = el("div", "empty-art");
+  const img = el("img");
+  img.src = "assets/branding/icon-256.png";
+  img.alt = "";
+  art.append(img);
+  box.append(art, el("h2", "", `What are we tackling with ${bot}?`), el("p", "", bots.find((b) => b.name === bot)?.description ?? ""));
   const sug = el("div", "suggestions");
   for (const s of SUGGESTIONS[bot] ?? []) {
     const b = el("button", "suggestion", s);
@@ -225,7 +234,7 @@ function setTyping(bot: string, on: boolean) {
 function updateComposer() {
   const isBusy = busy.has(current);
   $<HTMLButtonElement>("send").disabled = isBusy;
-  $<HTMLButtonElement>("send").textContent = isBusy ? "Working…" : "Send ⏎";
+  $<HTMLButtonElement>("send").textContent = isBusy ? "Working…" : "Send";
 }
 
 async function send(text: string) {
@@ -242,7 +251,7 @@ async function send(text: string) {
 
 function errorMsg(text: string) {
   const m = el("div", "msg error");
-  m.append(el("strong", "", "ERROR  "), document.createTextNode(text));
+  m.append(el("strong", "", "Something went wrong: "), document.createTextNode(text));
   return m;
 }
 
@@ -390,7 +399,7 @@ async function loadApprovals() {
   const items = await api.listApprovals();
   const box = $("approvals");
   if (!items.length) {
-    box.replaceChildren(el("p", "muted", "Nothing waiting. Background runs queue actions here instead of doing them."));
+    box.replaceChildren(el("p", "muted", "Nothing waiting on you. When bots run in the background, anything that needs your OK shows up here."));
   } else {
     box.replaceChildren(
       ...items.map((a) => {
@@ -506,6 +515,8 @@ function wire() {
     if (approvalQueue.length === 1) showNextApproval();
   });
 }
+
+document.documentElement.dataset.platform = window.slopbotPlatform ?? "web";
 
 async function main() {
   wire();
