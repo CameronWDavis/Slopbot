@@ -31,17 +31,22 @@ export const expandHome = (p: string) => (p.startsWith("~") ? path.join(os.homed
  * Relative paths resolve against the workspace. Symlinks are followed before checking.
  */
 export function safePath(ctx: ToolContext, p: string): string {
-  const abs = path.resolve(ctx.roots[0], expandHome(String(p ?? ".")));
+  const rel = expandHome(String(p ?? "."));
+  // Relative paths resolve against the workspace, but fall back to the project dir
+  // ("examples/foo.csv") when that's where the file actually is.
+  const candidates = [path.resolve(ctx.roots[0], rel), path.resolve(ctx.config.rootDir, rel)];
+  const abs = candidates.find((c) => fs.existsSync(c) && inRoots(ctx, fs.realpathSync(c))) ?? candidates[0];
   // realpath the deepest existing ancestor so new files can still be created.
   let probe = abs;
   while (!fs.existsSync(probe) && path.dirname(probe) !== probe) probe = path.dirname(probe);
   const real = path.join(fs.realpathSync(probe), path.relative(probe, abs));
-  const ok = ctx.roots.some((r) => real === r || real.startsWith(r + path.sep));
-  if (!ok) {
+  if (!inRoots(ctx, real)) {
     throw new Error(`Path "${p}" is outside this bot's allowed roots: ${ctx.roots.join(", ")}`);
   }
   return real;
 }
+
+const inRoots = (ctx: ToolContext, real: string) => ctx.roots.some((r) => real === r || real.startsWith(r + path.sep));
 
 /** Shorthand for a JSON-Schema object. */
 export function obj(properties: Record<string, unknown>, required: string[] = []) {

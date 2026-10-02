@@ -223,6 +223,7 @@ export const financeTools: Tool[] = [
       limit: { type: "integer", description: "Default 100" },
     }),
     async run({ from, to, category, text, limit = 100 }, ctx) {
+      if (/^(all|any|\*)?$/i.test(category ?? "")) category = undefined; // small models love "all"
       const txns = readLedger(ctx).transactions.filter(
         (t) =>
           (!from || t.date >= from) &&
@@ -237,36 +238,54 @@ export const financeTools: Tool[] = [
   },
   {
     name: "finance.summary",
-    description: "Summarize income and spending, grouped by category or by month, over an optional date range.",
+    description:
+      "Full spending report for an optional date range: income, spending, net, totals by category, totals by month, largest expenses, and uncategorized count. Use these exact figures.",
     risk: "read",
     parameters: obj({
-      from: { type: "string" },
-      to: { type: "string" },
-      group_by: { type: "string", enum: ["category", "month"], description: "Default category" },
+      from: { type: "string", description: "YYYY-MM-DD inclusive" },
+      to: { type: "string", description: "YYYY-MM-DD inclusive" },
     }),
-    async run({ from, to, group_by = "category" }, ctx) {
+    async run({ from, to }, ctx) {
       const txns = readLedger(ctx).transactions.filter((t) => (!from || t.date >= from) && (!to || t.date <= to));
       if (!txns.length) return "No transactions in range. Import a CSV with finance.import_csv first.";
       const isTransfer = (t: Txn) => t.category === "Transfers";
       const income = txns.filter((t) => t.amount > 0 && !isTransfer(t)).reduce((s, t) => s + t.amount, 0);
       const spend = txns.filter((t) => t.amount < 0 && !isTransfer(t)).reduce((s, t) => s + t.amount, 0);
-      const groups = new Map<string, { total: number; count: number }>();
-      for (const t of txns) {
-        const k = group_by === "month" ? t.date.slice(0, 7) : t.category;
-        const g = groups.get(k) ?? { total: 0, count: 0 };
-        g.total += t.amount;
-        g.count++;
-        groups.set(k, g);
-      }
-      const sorted = [...groups.entries()].sort((a, b) =>
-        group_by === "month" ? a[0].localeCompare(b[0]) : a[1].total - b[1].total,
-      );
-      const range = `${txns[0].date} → ${txns[txns.length - 1].date}`;
+      const group = (key: (t: Txn) => string) => {
+        const groups = new Map<string, { total: number; count: number }>();
+        for (const t of txns) {
+          const g = groups.get(key(t)) ?? { total: 0, count: 0 };
+          g.total += t.amount;
+          g.count++;
+          groups.set(key(t), g);
+        }
+        return [...groups.entries()];
+      };
+      const fmt = ([k, g]: [string, { total: number; count: number }]) =>
+        `  ${k.padEnd(16)} ${money(g.total).padStart(12)}  (${g.count} txn${g.count === 1 ? "" : "s"})`;
+      const byCategory = group((t) => t.category).sort((a, b) => a[1].total - b[1].total);
+      const byMonth = group((t) => t.date.slice(0, 7)).sort((a, b) => a[0].localeCompare(b[0]));
+      const largest = txns
+        .filter((t) => t.amount < 0 && !isTransfer(t))
+        .sort((a, b) => a.amount - b.amount)
+        .slice(0, 5);
+      const uncategorized = txns.filter((t) => t.category === "Uncategorized");
       return [
-        `Range: ${range} (${txns.length} transactions)`,
+        `Range: ${txns[0].date} → ${txns[txns.length - 1].date} (${txns.length} transactions)`,
         `Income: ${money(income)}   Spending: ${money(spend)}   Net: ${money(income + spend)} (transfers excluded)`,
         "",
-        ...sorted.map(([k, g]) => `${k.padEnd(16)} ${money(g.total).padStart(12)}  (${g.count})`),
+        "By category:",
+        ...byCategory.map(fmt),
+        "",
+        "By month:",
+        ...byMonth.map(fmt),
+        "",
+        "Largest expenses:",
+        ...largest.map((t) => `  ${t.date}  ${money(t.amount).padStart(11)}  ${t.description} [${t.category}]`),
+        "",
+        uncategorized.length
+          ? `Uncategorized (${uncategorized.length}): ${[...new Set(uncategorized.map((t) => t.description))].slice(0, 10).join("; ")}`
+          : "Uncategorized: none",
       ].join("\n");
     },
   },
