@@ -153,6 +153,14 @@ export function createMockApi(): SlopbotApi {
     },
     searchForgetKey: async (p) => void (search.keys[p] = false),
     searchTest: async () => ({ provider: search.active, results: [{ title: "Model Context Protocol", url: "https://en.wikipedia.org/wiki/Model_Context_Protocol", snippet: "" }] }),
+    telegramStatus: async () => ({ configured: false, enabled: false, running: false, linked: false, rejected: 0 }),
+    telegramSetToken: async () => "SlopTestBot",
+    telegramPair: async () => ({ code: "483912", expiresAt: Date.now() + 600000 }),
+    telegramUnlink: async () => {},
+    telegramSetDefaultBot: async () => {},
+    telegramSetEnabled: async () => {},
+    telegramRemoveToken: async () => {},
+    onTelegramStatus: () => () => {},
     ollamaStatus: async () => structuredClone(ol),
     ollamaStart: async () => {
       await sleep(800);

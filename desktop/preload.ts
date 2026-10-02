@@ -1,6 +1,6 @@
 // Exposes a narrow, typed API to the sandboxed renderer. No Node access leaks through.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
-import type { AgentEvent, ApprovalRequest, PullProgress, SlopbotApi } from "./api.js";
+import type { AgentEvent, ApprovalRequest, PullProgress, SlopbotApi, TelegramStatus } from "./api.js";
 
 const subscribe = <T>(channel: string, cb: (payload: T) => void) => {
   const listener = (_e: IpcRendererEvent, payload: T) => cb(payload);
@@ -35,6 +35,14 @@ const api: SlopbotApi = {
   searchSave: (s) => ipcRenderer.invoke("search:save", s),
   searchForgetKey: (p) => ipcRenderer.invoke("search:forgetKey", p),
   searchTest: (q) => ipcRenderer.invoke("search:test", q),
+  telegramStatus: () => ipcRenderer.invoke("telegram:status"),
+  telegramSetToken: (t) => ipcRenderer.invoke("telegram:setToken", t),
+  telegramPair: () => ipcRenderer.invoke("telegram:pair"),
+  telegramUnlink: () => ipcRenderer.invoke("telegram:unlink"),
+  telegramSetDefaultBot: (b) => ipcRenderer.invoke("telegram:setDefaultBot", b),
+  telegramSetEnabled: (on) => ipcRenderer.invoke("telegram:setEnabled", on),
+  telegramRemoveToken: () => ipcRenderer.invoke("telegram:removeToken"),
+  onTelegramStatus: (cb) => subscribe<TelegramStatus>("telegram:status", cb),
   ollamaStatus: () => ipcRenderer.invoke("ollama:status"),
   ollamaStart: () => ipcRenderer.invoke("ollama:start"),
   ollamaStop: () => ipcRenderer.invoke("ollama:stop"),

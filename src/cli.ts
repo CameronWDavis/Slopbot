@@ -10,6 +10,8 @@ import { resolveModel } from "./providers/index.js";
 import { runScheduled, startDaemon } from "./scheduler/scheduler.js";
 import { McpManager } from "./mcp/client.js";
 import { openSecretStore } from "./secrets.js";
+import { TelegramChannel } from "./channels/telegram.js";
+import { acquireLock } from "./lock.js";
 import { Ollama, ollamaProviderName, ollamaUrl } from "./ollama/ollama.js";
 import { ensureOllamaProvider, setDefaultModel } from "./config-edit.js";
 import { Store } from "./store/store.js";
@@ -154,8 +156,12 @@ async function main() {
     }
 
     case "daemon": {
+      if (!acquireLock(config.dataDir, "scheduler")) throw new Error("Schedules are already running in another SlopBot process (the desktop app or another daemon).");
       console.log(c.bold("SlopBot daemon started. Ctrl-C to stop."));
-      startDaemon(config, store, mcp);
+      const telegram = new TelegramChannel({ config, store, mcp, secrets: openSecretStore(config.dataDir), log: (m) => console.log(c.dim(m)) });
+      if (await telegram.start()) console.log(`📱 Telegram connected as @${telegram.status().botUsername}${telegram.status().linked ? ` (linked to ${telegram.status().ownerName})` : " (not linked yet: open the desktop app → Channels)"}`);
+      else if (telegram.status().error) console.log(c.yellow(`Telegram: ${telegram.status().error}`));
+      startDaemon(config, store, mcp, { telegram: (t, x) => telegram.report(t, x) });
       await new Promise(() => {});
       return;
     }

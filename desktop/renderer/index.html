@@ -35,6 +35,7 @@
           <button class="view-btn" data-view="memory">Memory</button>
           <button class="view-btn" data-view="models">Models</button>
           <button class="view-btn" data-view="vault">Vault</button>
+          <button class="view-btn" data-view="channels">Channels</button>
           <button class="view-btn" data-view="connectors">Connectors <span class="count" id="connectors-count" hidden>0</span></button>
         </nav>
         <div class="sidebar-foot" id="foot"></div>
@@ -98,6 +99,16 @@
           </div>
           <div class="connector-error" id="vault-error" hidden></div>
           <div class="list" id="vault-list"></div>
+        </section>
+
+        <section class="view" id="view-channels" hidden>
+          <div class="chat-head">
+            <div>
+              <h1>Channels</h1>
+              <p class="muted">Talk to your bots from your phone while SlopBot runs on this computer. Nothing is exposed to the internet: SlopBot checks Telegram for your messages.</p>
+            </div>
+          </div>
+          <div class="list" id="channels"></div>
         </section>
 
         <section class="view" id="view-connectors" hidden>

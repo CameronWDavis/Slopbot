@@ -7,7 +7,11 @@ import type { McpManager } from "../mcp/client.js";
 import type { Store } from "../store/store.js";
 import { sendMail } from "../tools/email.js";
 
-export async function runScheduled(config: Config, store: Store, bot: BotDef, s: Schedule, log = console.log, mcp?: McpManager) {
+export interface Notifiers {
+  telegram?: (title: string, text: string) => Promise<void>;
+}
+
+export async function runScheduled(config: Config, store: Store, bot: BotDef, s: Schedule, log = console.log, mcp?: McpManager, notifiers: Notifiers = {}) {
   log(`▶ ${bot.name}/${s.name}: ${s.task}`);
   const agent = new Agent(config, store, bot, "background", {}, mcp);
   try {
@@ -20,13 +24,19 @@ export async function runScheduled(config: Config, store: Store, bot: BotDef, s:
       await sendMail(config, { subject: `[SlopBot:${bot.name}] ${s.name}`, body: res.text + footer });
       log(`✉ emailed ${bot.name}/${s.name} report`);
     }
+    if (s.notify === "telegram") {
+      if (!notifiers.telegram) throw new Error("Telegram isn't connected in this process");
+      const footer = res.pendingApprovals.length ? `\n\n${res.pendingApprovals.length} action(s) are waiting for your OK; send /approvals.` : "";
+      await notifiers.telegram(`${bot.name} · ${s.name}`, res.text + footer);
+      log(`📬 sent ${bot.name}/${s.name} report to Telegram`);
+    }
     return res;
   } catch (e: any) {
     log(`✖ ${bot.name}/${s.name}: ${e.message}`);
   }
 }
 
-export function startDaemon(config: Config, store: Store, mcp?: McpManager) {
+export function startDaemon(config: Config, store: Store, mcp?: McpManager, notifiers: Notifiers = {}) {
   const bots = loadBots(config);
   const busy = new Set<string>(); // one run per bot at a time
   const jobs: Cron[] = [];
@@ -40,7 +50,7 @@ export function startDaemon(config: Config, store: Store, mcp?: McpManager) {
         }
         busy.add(bot.name);
         try {
-          await runScheduled(config, store, bot, s, console.log, mcp);
+          await runScheduled(config, store, bot, s, console.log, mcp, notifiers);
         } finally {
           busy.delete(bot.name);
         }

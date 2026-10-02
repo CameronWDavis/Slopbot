@@ -8,8 +8,8 @@ export interface Schedule {
   name: string;
   cron: string;
   task: string;
-  /** Email the final answer to config.smtp.to when the run finishes. */
-  notify?: "email" | "none";
+  /** Where to send the final answer: email (config.smtp.to), telegram (the linked account), or nowhere. */
+  notify?: "email" | "telegram" | "none";
 }
 
 export interface BotDef {

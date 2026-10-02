@@ -92,6 +92,16 @@ Read-only tools run freely; everything else asks you first, and destructive tool
 
 Lots of connectors on a small local model? Bots automatically get only the tools relevant to your request, plus a `tools.find` tool to look up the rest (`maxTools` in the config or a bot's YAML; `auto` by default). Config lives in `slopbot.mcp.json` (same format as Claude Desktop). From the terminal: `npm run slopbot connectors`.
 
+## Talk to your bots from your phone (Telegram) 📱
+
+Open **Channels** in the desktop app:
+
+1. In Telegram, message [@BotFather](https://t.me/BotFather), send `/newbot`, and paste the token into SlopBot (it goes in your Keychain)
+2. Click **Link my Telegram account**, then tap the link on your phone. That account becomes the **only** one the bot will ever answer
+3. Chat with your bots from anywhere: `/bots`, `/bot ledger`, `/new`, `/approvals`
+
+Approvals arrive as **Approve / Deny** buttons, and schedules with `notify: telegram` send their reports to you. Everyone else, including group chats, is ignored without a reply. SlopBot polls Telegram, so no port is opened on your computer. It works while the desktop app is open or `npm run slopbot daemon` is running. (Telegram bot chats aren't end-to-end encrypted; don't paste passwords into them.)
+
 ## Vault: let bots use your accounts without seeing passwords 🔐
 
 Open **Vault** and add an API key or login, plus the websites it's for. It's encrypted on this Mac (the key lives in your Keychain, so the file is useless anywhere else). Bots see only the name; when one calls an API "with credential GitHub", SlopBot attaches the key, **only for the sites you listed**, after asking you, and scrubs it from anything that comes back.

@@ -31,4 +31,4 @@ schedules:
       Build my weekly money report for the last 7 days: total income vs spending, top categories,
       biggest transactions, anything unusual, and progress against any budgets you remember.
       Keep it short and scannable.
-    notify: email
+    notify: email              # or: telegram (Channels tab) / none

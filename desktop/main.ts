@@ -14,6 +14,9 @@ import { ensureOllamaProvider, setBotModel, setDefaultModel, setSearchConfig } f
 import { openVault } from "../src/agent/runtime.js";
 import { KEYED, resolveSearch, searchKeyName, webSearch, type SearchProvider } from "../src/search/search.js";
 import type { VaultEntry } from "../src/vault/vault.js";
+import { TelegramChannel } from "../src/channels/telegram.js";
+import { acquireLock } from "../src/lock.js";
+import { startDaemon } from "../src/scheduler/scheduler.js";
 import { openSecretStore } from "../src/secrets.js";
 import { Store, newId } from "../src/store/store.js";
 import { toolsFor } from "../src/tools/registry.js";
@@ -48,6 +51,7 @@ let config: Config;
 let store: Store;
 let mcp: McpManager;
 let ollama: Ollama;
+let telegram: TelegramChannel;
 let home: string;
 const pulls = new Map<string, AbortController>();
 let win: BrowserWindow | null = null;
@@ -205,6 +209,7 @@ function registerIpc() {
   const reloadConfig = () => {
     config = loadConfig(home);
     ollama.baseUrl = ollamaUrl(config);
+    telegram.config = config;
     for (const name of agents.keys()) if (!busy.has(name)) agents.delete(name);
   };
   // ── Vault (bots use these; the UI and the model never get secrets back) ──
@@ -243,6 +248,19 @@ function registerIpc() {
     openSecretStore(config.dataDir).delete(searchKeyName(provider));
   });
   ipcMain.handle("search:test", async (_e, query: string) => webSearch(query, { config: config.search, secrets: openSecretStore(config.dataDir), max: 5 }));
+
+  // ── Telegram ───────────────────────────────────────
+  ipcMain.handle("telegram:status", () => telegram.status());
+  ipcMain.handle("telegram:setToken", async (_e, token: string) => {
+    const name = await telegram.setToken(token);
+    await telegram.start();
+    return name;
+  });
+  ipcMain.handle("telegram:pair", () => telegram.startPairing());
+  ipcMain.handle("telegram:unlink", () => telegram.unlink());
+  ipcMain.handle("telegram:setDefaultBot", (_e, bot: string) => telegram.setDefaultBot(bot));
+  ipcMain.handle("telegram:setEnabled", (_e, on: boolean) => telegram.setEnabled(on));
+  ipcMain.handle("telegram:removeToken", () => telegram.removeToken());
 
   ipcMain.handle("ollama:status", async () => {
     const version = await ollama.version();
@@ -386,6 +404,7 @@ function adoptShellPath() {
 
 app.on("before-quit", () => {
   void mcp?.closeAll();
+  void telegram?.stop();
   for (const ac of pulls.values()) ac.abort();
 });
 
@@ -404,8 +423,21 @@ app.whenReady().then(() => {
     return net.fetch(pathToFileURL(file).toString());
   });
 
+  telegram = new TelegramChannel({
+    config,
+    store,
+    mcp,
+    secrets: openSecretStore(config.dataDir),
+    apiBase: process.env.SLOPBOT_TELEGRAM_API, // dev/testing only; defaults to api.telegram.org
+    onStatus: (s) => win?.webContents.send("telegram:status", s),
+    log: (m) => console.log(m),
+  });
   registerIpc();
   createWindow();
+  // Always-on while the app is open: Telegram, plus the bots' schedules (unless `slopbot daemon`
+  // already runs them; the lock keeps it to one process).
+  void telegram.start();
+  if (acquireLock(config.dataDir, "scheduler")) startDaemon(config, store, mcp, { telegram: (t, x) => telegram.report(t, x) });
   if (process.env.SLOPBOT_SMOKE) smokeTest(process.env.SLOPBOT_SMOKE);
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

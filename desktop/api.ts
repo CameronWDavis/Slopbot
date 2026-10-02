@@ -128,6 +128,20 @@ export interface SearchSettings {
   problem: string;
 }
 
+export interface TelegramStatus {
+  configured: boolean;
+  enabled: boolean;
+  running: boolean;
+  botUsername?: string;
+  linked: boolean;
+  ownerName?: string;
+  linkedAt?: string;
+  defaultBot?: string;
+  pairing?: { code: string; expiresAt: number; link?: string };
+  error?: string;
+  rejected: number;
+}
+
 export interface SlopbotApi {
   info(): Promise<{ dataDir: string; rootDir: string; homeDir: string; defaultModel: string; version: string; secrets: "keychain" | "libsecret" | "file" }>;
   listBots(): Promise<BotSummary[]>;
@@ -155,6 +169,14 @@ export interface SlopbotApi {
   searchSave(s: { provider: SearchProvider; searxngUrl?: string; key?: { provider: SearchProvider; value: string } }): Promise<void>;
   searchForgetKey(provider: SearchProvider): Promise<void>;
   searchTest(query: string): Promise<{ provider: string; results: { title: string; url: string; snippet: string }[] }>;
+  telegramStatus(): Promise<TelegramStatus>;
+  telegramSetToken(token: string): Promise<string>;
+  telegramPair(): Promise<TelegramStatus["pairing"]>;
+  telegramUnlink(): Promise<void>;
+  telegramSetDefaultBot(bot: string): Promise<void>;
+  telegramSetEnabled(on: boolean): Promise<void>;
+  telegramRemoveToken(): Promise<void>;
+  onTelegramStatus(cb: (s: TelegramStatus) => void): () => void;
   ollamaStatus(): Promise<OllamaStatus>;
   ollamaStart(): Promise<string>;
   ollamaStop(): Promise<void>;
