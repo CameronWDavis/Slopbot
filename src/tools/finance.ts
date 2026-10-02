@@ -139,7 +139,16 @@ export const financeTools: Tool[] = [
 
       const ledger = readLedger(ctx);
       const rules = [...ledger.rules, ...DEFAULT_RULES];
-      const existing = new Set(ledger.transactions.map((t) => t.id));
+      // Dedupe on content, not account label or id: re-importing the same export with a different
+      // (or missing) account name must not double-count. Count occurrences so two identical
+      // coffees on the same day in one file are both kept.
+      const fingerprint = (date: string, description: string, amount: number) =>
+        `${date}|${description.toLowerCase()}|${Math.round(amount * 100)}`;
+      const inLedger = new Map<string, number>();
+      for (const t of ledger.transactions) {
+        const f = fingerprint(t.date, t.description, t.amount);
+        inLedger.set(f, (inLedger.get(f) ?? 0) + 1);
+      }
       const seen = new Map<string, number>();
       let added = 0;
       let dupes = 0;
@@ -151,15 +160,14 @@ export const financeTools: Tool[] = [
           const description = r[desc].trim();
           let amount = ai >= 0 ? parseAmount(r[ai]) : parseAmount(r[credit] ?? "") - Math.abs(parseAmount(r[debit] ?? ""));
           if (invert) amount = -amount;
-          // Same date/desc/amount twice in one file is legitimate (two coffees); number them.
-          const key = `${account ?? ""}|${date}|${description}|${amount}`;
-          const n = (seen.get(key) ?? 0) + 1;
-          seen.set(key, n);
-          const id = crypto.createHash("sha1").update(`${key}|${n}`).digest("hex").slice(0, 12);
-          if (existing.has(id)) {
+          const f = fingerprint(date, description, amount);
+          const n = (seen.get(f) ?? 0) + 1;
+          seen.set(f, n);
+          if (n <= (inLedger.get(f) ?? 0)) {
             dupes++;
             continue;
           }
+          const id = crypto.createHash("sha1").update(`${f}|${n}`).digest("hex").slice(0, 12);
           ledger.transactions.push({
             id,
             date,
@@ -169,7 +177,6 @@ export const financeTools: Tool[] = [
             account,
             source: path.basename(p),
           });
-          existing.add(id);
           added++;
         } catch (e: any) {
           if (errors.length < 5) errors.push(e.message);

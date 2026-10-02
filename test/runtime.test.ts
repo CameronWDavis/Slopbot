@@ -99,6 +99,11 @@ test("finance flow: import CSV, summarize, remember, answer", async () => {
   script = [{ tools: [["finance.import_csv", { path: "bank.csv", account: "Checking" }]] }, { text: "ok" }];
   await agent.send("again");
   assert.match((agent.messages.at(-2) as any).content, /Imported 0 transactions \(18 duplicates skipped\)/);
+
+  // ...even when the account label differs or is missing.
+  script = [{ tools: [["finance.import_csv", { path: "bank.csv" }]] }, { text: "ok" }];
+  await agent.send("again, no account");
+  assert.match((agent.messages.at(-2) as any).content, /Imported 0 transactions \(18 duplicates skipped\)/);
 });
 
 test("background mode queues side effects; approve executes the stored call", async () => {
