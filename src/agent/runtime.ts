@@ -133,6 +133,7 @@ export class Agent {
     const { bot, store, sessionId } = this;
     const tool = this.tools.find((t) => t.name === call.name);
     if (!tool) {
+      this.hooks.onToolCall?.(call, { action: "deny", reason: "not available to this bot" });
       return `Error: tool "${call.name}" is not available to you. Available: ${this.tools.map((t) => t.name).join(", ")}`;
     }
 

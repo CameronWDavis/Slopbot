@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' blob: data:"
+    />
+    <title>SlopBot</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="titlebar">
+        <div class="brand">
+          <span class="brand-mark" data-text="SLOPBOT">SLOPBOT</span>
+          <span class="brand-sub">// personal agents</span>
+        </div>
+        <div class="titlebar-right">
+          <span class="pill" id="model-pill">model: …</span>
+          <button class="ghost small" id="open-data" title="Open data folder">data ↗</button>
+        </div>
+      </header>
+
+      <aside class="sidebar">
+        <div class="section-label">Bots</div>
+        <nav id="bot-list" class="bot-list" aria-label="Bots"></nav>
+
+        <div class="section-label">Views</div>
+        <nav class="views" aria-label="Views">
+          <button class="view-btn active" data-view="chat">Chat</button>
+          <button class="view-btn" data-view="approvals">Approvals <span class="badge" id="approvals-badge" hidden>0</span></button>
+          <button class="view-btn" data-view="activity">Activity</button>
+          <button class="view-btn" data-view="memory">Memory</button>
+        </nav>
+        <div class="sidebar-foot" id="foot"></div>
+      </aside>
+
+      <main class="center">
+        <section class="view" id="view-chat">
+          <div class="chat-head">
+            <div>
+              <h1 id="chat-title">—</h1>
+              <p id="chat-desc" class="muted"></p>
+            </div>
+            <button class="ghost small" id="new-chat">New chat</button>
+          </div>
+          <div class="thread" id="thread" aria-live="polite"></div>
+          <form class="composer" id="composer">
+            <textarea id="input" rows="1" placeholder="Tell your bot what to do…  (Enter to send, Shift+Enter for a new line)"></textarea>
+            <div class="composer-row">
+              <label class="model-select">
+                <span>model</span>
+                <select id="model"></select>
+              </label>
+              <button type="submit" class="primary" id="send">Send ⏎</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="view" id="view-approvals" hidden>
+          <div class="chat-head"><div><h1>Approvals</h1><p class="muted">Actions bots queued while running in the background. Approving runs exactly what's shown.</p></div><button class="ghost small" id="refresh-approvals">Refresh</button></div>
+          <div class="list" id="approvals"></div>
+        </section>
+
+        <section class="view" id="view-activity" hidden>
+          <div class="chat-head"><div><h1>Activity</h1><p class="muted">Everything your bots did, newest first.</p></div><button class="ghost small" id="refresh-activity">Refresh</button></div>
+          <div class="list mono" id="activity"></div>
+        </section>
+
+        <section class="view" id="view-memory" hidden>
+          <div class="chat-head"><div><h1>Memory</h1><p class="muted" id="memory-desc"></p></div></div>
+          <div class="list" id="memory"></div>
+        </section>
+      </main>
+
+      <section class="stage" aria-label="Bag Buddy">
+        <div class="stage-grid"></div>
+        <div class="mascot" id="mascot" title="Say hi"><div class="stage-floor"></div></div>
+        <div class="stage-status">
+          <span class="dot" id="status-dot"></span>
+          <span id="status-text">BOOTING</span>
+        </div>
+        <div class="stage-caption" id="stage-caption"></div>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="approval-modal" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="approval-title">
+        <div class="modal-tag">APPROVAL REQUIRED</div>
+        <h2 id="approval-title"></h2>
+        <p class="muted" id="approval-reason"></p>
+        <pre class="code" id="approval-args"></pre>
+        <div class="modal-actions">
+          <button class="danger" id="approval-deny">Deny</button>
+          <button class="ghost" id="approval-always">Always this session</button>
+          <button class="primary" id="approval-allow">Allow</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

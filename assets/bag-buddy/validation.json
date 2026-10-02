@@ -1,0 +1,75 @@
+{
+  "passed": true,
+  "glbBytes": 865328,
+  "triangles": 38428,
+  "meshes": 20,
+  "nodes": 36,
+  "materials": 7,
+  "selfContained": true,
+  "checks": [
+    "GLB structure",
+    "finite geometry",
+    "triangle indices",
+    "named clips and durations",
+    "matching reset channels",
+    "unit quaternions",
+    "loop endpoint continuity",
+    "prop visibility"
+  ],
+  "clips": [
+    {
+      "name": "idle",
+      "durationSeconds": 4.0,
+      "channels": 48,
+      "loopSeamChecked": true
+    },
+    {
+      "name": "thinking",
+      "durationSeconds": 3.2,
+      "channels": 48,
+      "loopSeamChecked": true
+    },
+    {
+      "name": "laughing",
+      "durationSeconds": 2.4,
+      "channels": 48,
+      "loopSeamChecked": true
+    },
+    {
+      "name": "waving",
+      "durationSeconds": 2.0,
+      "channels": 48,
+      "loopSeamChecked": false
+    },
+    {
+      "name": "celebrating",
+      "durationSeconds": 2.4,
+      "channels": 48,
+      "loopSeamChecked": false
+    },
+    {
+      "name": "sleeping",
+      "durationSeconds": 4.0,
+      "channels": 48,
+      "loopSeamChecked": true
+    },
+    {
+      "name": "curious",
+      "durationSeconds": 2.4,
+      "channels": 48,
+      "loopSeamChecked": false
+    },
+    {
+      "name": "oops",
+      "durationSeconds": 2.4,
+      "channels": 48,
+      "loopSeamChecked": false
+    },
+    {
+      "name": "paddle_ball",
+      "durationSeconds": 4.8,
+      "channels": 48,
+      "loopSeamChecked": true
+    }
+  ]
+}

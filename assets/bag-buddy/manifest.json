@@ -1,0 +1,133 @@
+{
+  "name": "Bag Buddy",
+  "version": "1.0.0",
+  "model": "bag-buddy.glb",
+  "source": "bag-buddy.blend",
+  "poster": "previews/idle.png",
+  "format": "glTF 2.0",
+  "rig": "hierarchical transform animation",
+  "coordinates": {
+    "up": "+Y",
+    "forward": "+Z",
+    "groundY": 0,
+    "nominalHeight": 2.5
+  },
+  "defaultClip": "idle",
+  "transitionSeconds": 0.22,
+  "clips": [
+    {
+      "name": "idle",
+      "durationSeconds": 4.0,
+      "loop": true
+    },
+    {
+      "name": "thinking",
+      "durationSeconds": 3.2,
+      "loop": true
+    },
+    {
+      "name": "laughing",
+      "durationSeconds": 2.4,
+      "loop": true
+    },
+    {
+      "name": "waving",
+      "durationSeconds": 2.0,
+      "loop": false
+    },
+    {
+      "name": "celebrating",
+      "durationSeconds": 2.4,
+      "loop": false
+    },
+    {
+      "name": "sleeping",
+      "durationSeconds": 4.0,
+      "loop": true
+    },
+    {
+      "name": "curious",
+      "durationSeconds": 2.4,
+      "loop": false
+    },
+    {
+      "name": "oops",
+      "durationSeconds": 2.4,
+      "loop": false
+    },
+    {
+      "name": "paddle_ball",
+      "durationSeconds": 4.8,
+      "loop": true
+    }
+  ],
+  "behavior": {
+    "thinking": {
+      "clip": "thinking",
+      "priority": 80,
+      "interruptsBoredom": true
+    },
+    "working": {
+      "clip": "thinking",
+      "priority": 80,
+      "interruptsBoredom": true
+    },
+    "greeting": {
+      "clip": "waving",
+      "priority": 40,
+      "then": "idle"
+    },
+    "amused": {
+      "clip": "laughing",
+      "priority": 40,
+      "maxLoops": 2,
+      "then": "idle"
+    },
+    "success": {
+      "clip": "celebrating",
+      "priority": 60,
+      "then": "idle"
+    },
+    "surprised": {
+      "clip": "curious",
+      "priority": 40,
+      "then": "idle"
+    },
+    "playful_mishap": {
+      "clip": "oops",
+      "priority": 30,
+      "then": "idle"
+    },
+    "bored": {
+      "clip": "paddle_ball",
+      "priority": 10,
+      "idleAfterSeconds": 25,
+      "maxLoops": 3,
+      "then": "idle"
+    },
+    "sleepy": {
+      "clip": "sleeping",
+      "priority": 5,
+      "idleAfterSeconds": 120
+    },
+    "idle": {
+      "clip": "idle",
+      "priority": 0
+    }
+  },
+  "behaviorContract": {
+    "implementedHere": false,
+    "description": "Declarative hooks for the future web UI; assets do not run timers or execute tools.",
+    "idleClock": "Time since last real user or agent activity; ambient animations do not reset it.",
+    "resetOn": [
+      "user_input",
+      "agent_started",
+      "tool_started",
+      "agent_finished"
+    ],
+    "reducedMotion": "Static idle pose at time zero; no automatic animation.",
+    "hiddenTab": "Pause mixer and ambient timers; resume without catch-up.",
+    "busy": "Suppress bored and sleepy states while an agent turn or tool is active.",
+    "sound": "Silent; laughter is visual only."
+  }
+}

@@ -14,18 +14,79 @@
     "slopbot": "tsx src/cli.ts",
     "dev": "tsx src/cli.ts",
     "build": "tsc -p .",
-    "typecheck": "tsc -p . --noEmit",
-    "test": "tsx --test test/*.test.ts"
+    "typecheck": "tsc -p . --noEmit && tsc -p tsconfig.desktop.json",
+    "test": "tsx --test test/*.test.ts",
+    "desktop:build": "node desktop/build.mjs",
+    "desktop": "node desktop/build.mjs && electron .",
+    "desktop:preview": "node desktop/build.mjs && npx --yes http-server dist-desktop/renderer -p 5199 -c-1",
+    "desktop:dist": "node desktop/build.mjs && electron-builder",
+    "desktop:dist:mac": "node desktop/build.mjs && electron-builder --mac",
+    "desktop:dist:win": "node desktop/build.mjs && electron-builder --win",
+    "desktop:dist:linux": "node desktop/build.mjs && electron-builder --linux"
   },
   "dependencies": {
     "croner": "^10.0.1",
     "nodemailer": "^10.0.13",
+    "three": "^0.186.1",
     "yaml": "^2.9.1"
   },
   "devDependencies": {
+    "@fontsource/chakra-petch": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
     "@types/node": "^20.19.43",
     "@types/nodemailer": "^8.0.2",
+    "@types/three": "^0.186.0",
+    "electron": "^41.7.1",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3"
+  },
+  "main": "dist-desktop/main.cjs",
+  "productName": "SlopBot",
+  "author": "SlopBot contributors",
+  "build": {
+    "appId": "dev.slopbot.app",
+    "productName": "SlopBot",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist-desktop/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "bots",
+        "to": "seed/bots"
+      },
+      {
+        "from": "examples",
+        "to": "seed/examples"
+      },
+      {
+        "from": "slopbot.config.example.yaml",
+        "to": "seed/slopbot.config.example.yaml"
+      }
+    ],
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Utility"
+    }
   }
 }

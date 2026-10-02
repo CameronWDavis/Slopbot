@@ -43,6 +43,19 @@ npm run slopbot approve ap_1234abcd
 npm run slopbot activity -n 30                             # audit trail
 ```
 
+## Desktop app 🖥️
+
+A native, cyberpunk-themed desktop app with **Bag Buddy**, an animated 3D mascot that reacts to what your bots are actually doing. He thinks while they work, celebrates when they finish, and plays paddle-ball if you leave him alone.
+
+```bash
+npm run desktop               # build and launch
+npm run desktop:dist:mac      # → release/SlopBot-<version>-arm64.dmg
+npm run desktop:dist:win      # → release/SlopBot Setup <version>.exe (best built on Windows)
+npm run desktop:dist:linux    # → release/SlopBot-<version>.AppImage
+```
+
+It runs fully on your machine, with no web server and no open ports. In dev it uses this folder's `bots/`, config, and `data/`. The packaged app keeps them in `~/Library/Application Support/SlopBot/home` (seeded with the sample bots on first launch). Override with `SLOPBOT_HOME`.
+
 ## Make your own bot
 
 Drop a YAML file into `bots/`:
