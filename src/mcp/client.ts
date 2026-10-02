@@ -12,6 +12,8 @@ import { getDefaultEnvironment, StdioClientTransport } from "@modelcontextprotoc
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
+import { AuthStore, NeedsSignInError, SlopOAuthProvider, waitForAuthCode } from "./oauth.js";
 import type { Config } from "../config.js";
 import type { Risk, Tool } from "../tools/types.js";
 
@@ -42,8 +44,10 @@ export interface McpToolInfo {
 export interface McpServerStatus {
   name: string;
   def: McpServerDef;
-  state: "disabled" | "idle" | "connecting" | "connected" | "error";
+  state: "disabled" | "idle" | "connecting" | "connected" | "error" | "needs_auth";
   error?: string;
+  /** For remote servers that use OAuth instead of a pasted token. */
+  oauth?: "signed_in" | "signed_out";
   tools: McpToolInfo[];
 }
 
@@ -103,8 +107,19 @@ export class McpManager {
   private connecting = new Map<string, Promise<Conn>>();
   private errors = new Map<string, string>();
 
-  constructor(private config: Config) {
+  readonly auth: AuthStore;
+  private needsAuth = new Set<string>();
+
+  /**
+   * @param openUrl opens the user's browser for OAuth sign-in. Without it (CLI, MCP-server mode)
+   *   servers that need a sign-in report "needs_auth" instead of popping up anything.
+   */
+  constructor(
+    private config: Config,
+    private openUrl?: (url: string) => void | Promise<void>,
+  ) {
     this.file = path.join(config.rootDir, MCP_FILE);
+    this.auth = new AuthStore(path.join(config.dataDir, "mcp-auth"));
   }
 
   // ── config file ──────────────────────────────────────
@@ -140,6 +155,7 @@ export class McpManager {
     delete servers[name];
     this.writeServers(servers);
     await this.disconnect(name);
+    this.auth.clear(name);
   }
 
   /**
@@ -180,11 +196,20 @@ export class McpManager {
   }
 
   // ── connections ──────────────────────────────────────
-  private makeTransport(def: McpServerDef, stderr: string[]): Transport {
-    if (def.url) {
-      const headers = interpolateMap(def.headers);
-      return new StreamableHTTPClientTransport(new URL(def.url), { requestInit: { headers } });
-    }
+  /** Remote servers use OAuth unless the user supplied their own Authorization header. */
+  private usesOAuth(def: McpServerDef) {
+    return !!def.url && !Object.keys(def.headers ?? {}).some((h) => h.toLowerCase() === "authorization");
+  }
+
+  private remoteOpts(name: string, def: McpServerDef, interactive = false) {
+    return {
+      requestInit: { headers: interpolateMap(def.headers) },
+      authProvider: this.usesOAuth(def) ? new SlopOAuthProvider(this.auth, name, interactive ? this.openUrl : undefined) : undefined,
+    };
+  }
+
+  private makeTransport(name: string, def: McpServerDef, stderr: string[]): Transport {
+    if (def.url) return new StreamableHTTPClientTransport(new URL(def.url), this.remoteOpts(name, def));
     const t = new StdioClientTransport({
       command: tilde(def.command!),
       args: (def.args ?? []).map((a) => tilde(interpolate(a))),
@@ -218,7 +243,7 @@ export class McpManager {
       return client;
     };
 
-    let transport = this.makeTransport(def, stderr);
+    let transport = this.makeTransport(name, def, stderr);
     let client: Client;
     try {
       client = await attempt(transport);
@@ -231,11 +256,13 @@ export class McpManager {
           .join(" ⏎ ");
         throw new Error(`${e?.message ?? e}${hint ? ` (server said: ${hint})` : ""}`);
       }
+      if (isAuthError(e)) throw this.usesOAuth(def) ? new NeedsSignInError(name) : new Error("Unauthorized (401): check the token in this server's Authorization header");
       // Older remote servers speak SSE instead of Streamable HTTP.
-      transport = new SSEClientTransport(new URL(def.url), { requestInit: { headers: interpolateMap(def.headers) } });
+      transport = new SSEClientTransport(new URL(def.url), this.remoteOpts(name, def));
       try {
         client = await attempt(transport);
-      } catch {
+      } catch (e2: any) {
+        if (isAuthError(e2) && this.usesOAuth(def)) throw new NeedsSignInError(name);
         throw new Error(e?.message ?? String(e));
       }
     }
@@ -270,11 +297,13 @@ export class McpManager {
       .then((c) => {
         this.conns.set(name, c);
         this.errors.delete(name);
+        this.needsAuth.delete(name);
         c.client.onclose = () => this.conns.delete(name);
         return c;
       })
       .catch((e) => {
         this.errors.set(name, e?.message ?? String(e));
+        if (e instanceof NeedsSignInError) this.needsAuth.add(name);
         throw e;
       })
       .finally(() => this.connecting.delete(name));
@@ -293,6 +322,7 @@ export class McpManager {
     const c = this.conns.get(name);
     this.conns.delete(name);
     this.errors.delete(name);
+    this.needsAuth.delete(name);
     await c?.client.close().catch(() => {});
   }
 
@@ -304,9 +334,63 @@ export class McpManager {
     return Object.entries(this.readServers()).map(([name, def]) => {
       const conn = this.conns.get(name);
       const state: McpServerStatus["state"] =
-        def.enabled === false ? "disabled" : conn ? "connected" : this.connecting.has(name) ? "connecting" : this.errors.has(name) ? "error" : "idle";
-      return { name, def, state, error: this.errors.get(name), tools: conn?.tools.map(({ schema, ...t }) => t) ?? [] };
+        def.enabled === false
+          ? "disabled"
+          : conn
+            ? "connected"
+            : this.connecting.has(name)
+              ? "connecting"
+              : this.needsAuth.has(name)
+                ? "needs_auth"
+                : this.errors.has(name)
+                  ? "error"
+                  : "idle";
+      return {
+        name,
+        def,
+        state,
+        error: this.errors.get(name),
+        tools: conn?.tools.map(({ schema, ...t }) => t) ?? [],
+        oauth: this.usesOAuth(def) ? (this.auth.isSignedIn(name) ? "signed_in" : "signed_out") : undefined,
+      };
     });
+  }
+
+  // ── OAuth ────────────────────────────────────────────
+  /**
+   * Interactive sign-in: opens the browser at the server's login page, waits for the redirect on
+   * the loopback URI, exchanges the code for tokens, then connects for real.
+   */
+  async signIn(name: string): Promise<void> {
+    const def = this.readServers()[name];
+    if (!def?.url) throw new Error(`"${name}" isn't a remote server`);
+    if (!this.usesOAuth(def)) throw new Error(`"${name}" uses a token header, so there's nothing to sign in to`);
+    if (!this.openUrl) throw new Error("Sign-in needs a browser. Use the SlopBot desktop app.");
+    await this.disconnect(name);
+
+    const waiter = waitForAuthCode(() => this.auth.read(name).state);
+    try {
+      const opts = this.remoteOpts(name, def, true);
+      const transport = new StreamableHTTPClientTransport(new URL(def.url), opts);
+      const client = new Client({ name: "slopbot", version: "0.1.0" });
+      try {
+        await client.connect(transport); // already authorized (e.g. tokens refreshed)
+      } catch (e) {
+        if (!opts.authProvider?.redirected) throw e;
+        await transport.finishAuth(await waiter.code);
+      } finally {
+        await client.close().catch(() => {});
+      }
+    } finally {
+      waiter.close();
+    }
+    this.needsAuth.delete(name);
+    await this.connect(name);
+  }
+
+  async signOut(name: string) {
+    this.auth.clear(name);
+    await this.disconnect(name);
   }
 
   // ── tools for the agent runtime ──────────────────────
@@ -353,4 +437,8 @@ export class McpManager {
     }
     return undefined;
   }
+}
+
+function isAuthError(e: any): boolean {
+  return e instanceof UnauthorizedError || e instanceof NeedsSignInError || e?.code === 401 || /\b401\b|unauthori[sz]ed|invalid_token/i.test(String(e?.message ?? e));
 }

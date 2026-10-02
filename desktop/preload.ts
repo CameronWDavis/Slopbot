@@ -26,6 +26,8 @@ const api: SlopbotApi = {
   mcpSave: (name, def, previousName) => ipcRenderer.invoke("mcp:save", name, def, previousName),
   mcpRemove: (name) => ipcRenderer.invoke("mcp:remove", name),
   mcpImport: (json, bots) => ipcRenderer.invoke("mcp:import", json, bots),
+  mcpSignIn: (name) => ipcRenderer.invoke("mcp:signin", name),
+  mcpSignOut: (name) => ipcRenderer.invoke("mcp:signout", name),
   onEvent: (cb) => subscribe<AgentEvent>("agent:event", cb),
   onApprovalRequest: (cb) => subscribe<ApprovalRequest>("approval:request", cb),
 };

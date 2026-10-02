@@ -1029,6 +1029,29 @@ button {
   outline-offset: 2px;
 }
 
+.signin-box {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px dashed var(--pink);
+  border-radius: var(--radius);
+  background: rgba(255, 43, 214, 0.07);
+  font-size: 13px;
+}
+.ok-tag {
+  color: var(--lime);
+  border-color: rgba(182, 255, 59, 0.45);
+}
+.preset.oauth .preset-title::before {
+  content: "↗ ";
+}
+.dot.needs_auth {
+  background: var(--amber);
+}
+
 /* forms */
 .modal.wide {
   width: min(680px, calc(100vw - 32px));

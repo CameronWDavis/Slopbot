@@ -25,6 +25,7 @@ export function createMockApi(): SlopbotApi {
     await sleep(900);
     if (!def.url && !/^(npx|uvx|node|docker)$/.test(def.command ?? "")) throw new Error(`spawn ${def.command} ENOENT`);
     if (def.url && /Bearer\s*$/.test(def.headers?.Authorization ?? "")) throw new Error("HTTP 401: Bad credentials");
+    if (def.url && !def.headers?.Authorization) throw new Error(`"${name}" needs you to sign in. Open Connectors and click Sign in.`);
     return fakeTools(name);
   };
 
@@ -94,6 +95,16 @@ export function createMockApi(): SlopbotApi {
       servers.set(name, { name, def, state: changed ? "idle" : prev!.state, tools: changed ? [] : prev!.tools, error: changed ? undefined : prev!.error });
     },
     mcpRemove: async (name) => void servers.delete(name),
+    async mcpSignIn(name) {
+      await sleep(1500);
+      const s = servers.get(name)!;
+      Object.assign(s, { state: "connected", oauth: "signed_in", error: undefined, tools: fakeTools(name) });
+      return { ...s };
+    },
+    async mcpSignOut(name) {
+      const s = servers.get(name)!;
+      Object.assign(s, { state: "needs_auth", oauth: "signed_out", tools: [] });
+    },
     async mcpImport(json, bots) {
       const data = JSON.parse(json);
       const map = data.mcpServers ?? data;

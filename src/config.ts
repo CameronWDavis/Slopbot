@@ -24,6 +24,8 @@ export interface Config {
   smtp?: SmtpConfig;
   policy: { rules: PolicyRule[] };
   maxToolOutputChars: number;
+  /** Default tool budget per step: a number, or "auto" (20 for local models, 64 for hosted). */
+  maxTools?: number | "auto";
 }
 
 export const CONFIG_FILE = "slopbot.config.yaml";
@@ -78,5 +80,6 @@ export function loadConfig(rootDir = process.env.SLOPBOT_HOME ? path.resolve(pro
     smtp,
     policy: { rules: raw.policy?.rules ?? [] },
     maxToolOutputChars: raw.maxToolOutputChars ?? 12_000,
+    maxTools: typeof raw.maxTools === "number" ? raw.maxTools : "auto",
   };
 }

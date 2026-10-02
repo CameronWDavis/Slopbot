@@ -11,6 +11,7 @@ import { expandHome, type Tool, type ToolContext } from "../tools/types.js";
 import type { McpManager } from "../mcp/client.js";
 import type { BotDef } from "./bot.js";
 import { buildSystemPrompt } from "./prompt.js";
+import { makeFindTool, selectTools, toolBudget } from "./toolselect.js";
 
 export type ApprovalAnswer = "yes" | "no" | "always";
 
@@ -58,6 +59,10 @@ export class Agent {
   private sessionAllow = new Set<string>();
   private tools: Tool[];
   private ctx: ToolContext;
+  /** Connector tools this conversation found (tools.find) or used; they stay offered. */
+  private activeTools = new Set<string>();
+  private offered: Tool[] = [];
+  private findTool: Tool;
 
   constructor(
     private config: Config,
@@ -69,6 +74,11 @@ export class Agent {
   ) {
     this.tools = toolsFor(bot.tools);
     this.ctx = makeToolContext(config, store, bot, this.sessionId);
+    this.findTool = makeFindTool(
+      () => this.tools.filter((t) => !this.offered.includes(t)),
+      this.activeTools,
+      () => this.tools.filter((t) => !this.offered.includes(t)).length,
+    );
   }
 
   /** MCP tools are attached on the first message (connecting to servers is async). */
@@ -97,9 +107,12 @@ export class Agent {
     let step = 0;
     try {
       for (step = 1; step <= bot.maxSteps; step++) {
+        const { offered, hidden } = selectTools(this.tools, this.activeTools, userText, toolBudget(this.config, bot), this.findTool);
+        this.offered = offered;
         const system = buildSystemPrompt({
           bot,
-          tools: this.tools,
+          tools: offered,
+          hiddenTools: hidden,
           memory: store.readMemory(bot.name),
           roots: this.ctx.roots,
           mode: this.mode,
@@ -108,7 +121,7 @@ export class Agent {
           model,
           system,
           messages: this.messages,
-          tools: this.tools.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters })),
+          tools: offered.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters })),
           temperature: bot.temperature,
         });
         if (turn.usage) {
@@ -146,7 +159,9 @@ export class Agent {
 
   private async handleCall(call: ToolCall, pending: string[]): Promise<string> {
     const { bot, store, sessionId } = this;
-    const tool = this.tools.find((t) => t.name === call.name);
+    // Any of the bot's tools may run even if it wasn't offered this step (e.g. named by tools.find).
+    const tool = call.name === this.findTool.name && this.offered.includes(this.findTool) ? this.findTool : this.tools.find((t) => t.name === call.name);
+    if (tool?.name.startsWith("mcp.")) this.activeTools.add(tool.name);
     if (!tool) {
       this.hooks.onToolCall?.(call, { action: "deny", reason: "not available to this bot" });
       return `Error: tool "${call.name}" is not available to you. Available: ${this.tools.map((t) => t.name).join(", ")}`;

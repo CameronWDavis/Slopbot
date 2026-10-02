@@ -60,11 +60,14 @@ It runs fully on your machine, with no web server and no open ports. In dev it u
 
 Open **Connectors** in the desktop app to plug any MCP server into your bots:
 
+- **Sign in with one click:** Notion, Linear, Sentry, Jira & Confluence. SlopBot opens your browser, you approve, and you're done (OAuth, no tokens to copy)
 - **Quick add:** Filesystem, Browser (Playwright), GitHub, Knowledge graph, Sequential thinking, Everything (demo)
 - **Paste JSON:** copy the `mcpServers` block from Claude Desktop, Cursor, or a server's README
 - **Test connection** shows the server's tools before you save, then pick which bots get it
 
-Read-only tools run freely; everything else asks you first, and destructive tools are flagged. Config lives in `slopbot.mcp.json` (same format as Claude Desktop). From the terminal: `npm run slopbot connectors`.
+Read-only tools run freely; everything else asks you first, and destructive tools are flagged.
+
+Lots of connectors on a small local model? Bots automatically get only the tools relevant to your request, plus a `tools.find` tool to look up the rest (`maxTools` in the config or a bot's YAML; `auto` by default). Config lives in `slopbot.mcp.json` (same format as Claude Desktop). From the terminal: `npm run slopbot connectors`.
 
 ## Drive your bots from Claude Code (MCP) 🔌
 

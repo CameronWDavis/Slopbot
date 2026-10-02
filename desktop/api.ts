@@ -64,8 +64,9 @@ export interface McpToolInfo {
 export interface McpServerStatus {
   name: string;
   def: McpServerDef;
-  state: "disabled" | "idle" | "connecting" | "connected" | "error";
+  state: "disabled" | "idle" | "connecting" | "connected" | "error" | "needs_auth";
   error?: string;
+  oauth?: "signed_in" | "signed_out";
   tools: McpToolInfo[];
 }
 
@@ -87,6 +88,8 @@ export interface SlopbotApi {
   mcpSave(name: string, def: McpServerDef, previousName?: string): Promise<void>;
   mcpRemove(name: string): Promise<void>;
   mcpImport(json: string, bots: string[]): Promise<string[]>;
+  mcpSignIn(name: string): Promise<McpServerStatus>;
+  mcpSignOut(name: string): Promise<void>;
   onEvent(cb: (e: AgentEvent) => void): () => void;
   onApprovalRequest(cb: (r: ApprovalRequest) => void): () => void;
 }

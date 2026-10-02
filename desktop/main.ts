@@ -214,6 +214,24 @@ function registerIpc() {
     await mcp.removeServer(name);
     refreshAgents();
   });
+  ipcMain.handle("mcp:signin", async (_e, name: string) => {
+    try {
+      await mcp.signIn(name);
+    } finally {
+      // Bring SlopBot back to the front after the browser round-trip.
+      if (win) {
+        if (win.isMinimized()) win.restore();
+        win.focus();
+        app.focus({ steal: true });
+      }
+    }
+    refreshAgents();
+    return mcp.status().find((s) => s.name === name);
+  });
+  ipcMain.handle("mcp:signout", async (_e, name: string) => {
+    await mcp.signOut(name);
+    refreshAgents();
+  });
   ipcMain.handle("mcp:import", async (_e, json: string, bots: string[]) => {
     const names = await mcp.importJson(json, bots);
     refreshAgents();
@@ -274,7 +292,7 @@ app.whenReady().then(() => {
   const home = resolveHome();
   config = loadConfig(home);
   store = new Store(config.dataDir);
-  mcp = new McpManager(config);
+  mcp = new McpManager(config, (url) => shell.openExternal(url));
 
   protocol.handle("app", (req) => {
     const { pathname } = new URL(req.url);

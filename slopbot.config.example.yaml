@@ -30,6 +30,11 @@ providers:
     baseUrl: https://api.groq.com/openai/v1
     apiKey: ${GROQ_API_KEY}
 
+# Max tools offered to the model per step. "auto" = 20 for local models, 64 for hosted ones.
+# When a bot has more (e.g. many connectors), it gets its built-in tools + the most relevant
+# connector tools + a tools.find tool to discover the rest. Bots can override with `maxTools:`.
+maxTools: auto
+
 # Outgoing email (for email.send and scheduled reports).
 # Gmail: host smtp.gmail.com, port 465, and an App Password (not your real password).
 # smtp:

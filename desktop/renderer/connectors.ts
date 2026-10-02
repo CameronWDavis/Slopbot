@@ -7,9 +7,15 @@ interface Preset {
   blurb: string;
   def: (home: string) => McpServerDef;
   note?: string;
+  /** Hosted server with OAuth: one click saves it and opens the browser to sign in. */
+  signIn?: boolean;
 }
 
 const PRESETS: Preset[] = [
+  { name: "notion", title: "Notion", blurb: "Pages and databases (sign in with Notion)", def: () => ({ url: "https://mcp.notion.com/mcp" }), signIn: true },
+  { name: "linear", title: "Linear", blurb: "Issues and projects (sign in with Linear)", def: () => ({ url: "https://mcp.linear.app/mcp" }), signIn: true },
+  { name: "sentry", title: "Sentry", blurb: "Errors and releases (sign in with Sentry)", def: () => ({ url: "https://mcp.sentry.dev/mcp" }), signIn: true },
+  { name: "atlassian", title: "Jira & Confluence", blurb: "Atlassian Cloud (sign in with Atlassian)", def: () => ({ url: "https://mcp.atlassian.com/v1/mcp" }), signIn: true },
   {
     name: "files",
     title: "Filesystem",
@@ -155,7 +161,7 @@ export function createConnectors(api: SlopbotApi, getBots: () => string[], getHo
       ...servers.map((s) => {
         const card = el("div", `card connector ${s.state}`);
         const head = el("div", "card-head");
-        const dot = el("span", `dot ${s.state === "connected" ? "" : s.state === "error" ? "err" : s.state === "connecting" ? "busy" : "off"}`);
+        const dot = el("span", `dot ${s.state === "connected" ? "" : s.state === "error" ? "err" : s.state === "connecting" || signingIn.has(s.name) ? "busy" : s.state === "needs_auth" ? "alert" : "off"}`);
         const where = s.def.url ?? joinCommand([s.def.command ?? "", ...(s.def.args ?? [])]);
         const sw = el("label", "switch");
         const cb = el("input");
@@ -171,10 +177,22 @@ export function createConnectors(api: SlopbotApi, getBots: () => string[], getHo
         head.append(dot, el("span", "connector-name", s.name), el("span", "connector-where", where), sw);
         card.append(head);
 
-        const stateText =
-          s.state === "connecting" ? "Connecting… (first run may download the server)" : s.state === "disabled" ? "Disabled" : s.state === "error" ? "" : "";
+        if (s.oauth === "signed_in") head.insertBefore(el("span", "tag ok-tag", "signed in"), sw);
+        const stateText = signingIn.has(s.name)
+          ? "Finish signing in in your browser, then come back here…"
+          : s.state === "connecting"
+            ? "Connecting… (first run may download the server)"
+            : s.state === "disabled"
+              ? "Disabled"
+              : "";
         if (stateText) card.append(el("div", "muted small-text", stateText));
-        if (s.error) card.append(el("div", "connector-error", s.error));
+        if (s.state === "needs_auth" && !signingIn.has(s.name)) {
+          const box = el("div", "signin-box");
+          const btn = el("button", "primary small", "Sign in");
+          btn.addEventListener("click", () => signIn(s.name));
+          box.append(el("span", "", `🔒 ${s.name} uses your account. Sign in once and your bots can use it.`), btn);
+          card.append(box);
+        } else if (s.error) card.append(el("div", "connector-error", s.error));
         if (s.tools.length) card.append(toolList(s.tools));
         card.append(botChips(s));
 
@@ -198,19 +216,63 @@ export function createConnectors(api: SlopbotApi, getBots: () => string[], getHo
           await load(false);
           onChange();
         });
-        actions.append(retry, edit, rm);
+        if (s.oauth === "signed_in") {
+          const out = el("button", "ghost small", "Sign out");
+          out.addEventListener("click", async () => {
+            await api.mcpSignOut(s.name);
+            await load(false);
+            onChange();
+          });
+          actions.append(out);
+        }
+        if (s.state !== "needs_auth") actions.append(retry);
+        actions.append(edit, rm);
         card.append(actions);
         return card;
       }),
     );
   }
 
+  const signingIn = new Set<string>();
+
+  async function signIn(name: string) {
+    signingIn.add(name);
+    const i = servers.findIndex((x) => x.name === name);
+    if (i >= 0) servers[i] = { ...servers[i], error: undefined };
+    render();
+    try {
+      const st = await api.mcpSignIn(name);
+      const j = servers.findIndex((x) => x.name === name);
+      if (st && j >= 0) servers[j] = st;
+    } catch (e: any) {
+      const j = servers.findIndex((x) => x.name === name);
+      if (j >= 0) servers[j] = { ...servers[j], state: "needs_auth", error: cleanError(e) };
+    } finally {
+      signingIn.delete(name);
+      render();
+      onChange();
+    }
+  }
+
   function renderPresets() {
     $("presets").replaceChildren(
       ...PRESETS.map((p) => {
-        const b = el("button", "preset");
+        const b = el("button", `preset${p.signIn ? " oauth" : ""}`);
         b.append(el("span", "preset-title", p.title), el("span", "preset-blurb", p.blurb));
-        b.addEventListener("click", () => openForm(undefined, { ...p.def(getHome()), bots: ["*"] }, p.name, p.note));
+        b.addEventListener("click", async () => {
+          if (!p.signIn) return openForm(undefined, { ...p.def(getHome()), bots: ["*"] }, p.name, p.note);
+          // OAuth presets: no form at all. Save, then straight to the browser.
+          let name = p.name;
+          for (let n = 2; servers.some((s) => s.name === name); n++) name = `${p.name}-${n}`;
+          if (servers.some((s) => s.def.url === p.def(getHome()).url)) {
+            const existing = servers.find((s) => s.def.url === p.def(getHome()).url)!;
+            if (existing.oauth !== "signed_in") signIn(existing.name);
+            return;
+          }
+          await api.mcpSave(name, { ...p.def(getHome()), bots: ["*"], enabled: true });
+          servers = await api.mcpList();
+          signIn(name);
+        });
         return b;
       }),
     );
@@ -340,7 +402,20 @@ export function createConnectors(api: SlopbotApi, getBots: () => string[], getHo
       out.replaceChildren(ok, toolList(tools));
       (out.querySelector("details") as HTMLDetailsElement).open = true;
     } catch (e: any) {
-      out.replaceChildren(el("div", "connector-error", cleanError(e)));
+      const msg = cleanError(e);
+      if (/needs you to sign in/.test(msg)) {
+        // OAuth server: offer to save and sign in right from the form.
+        const box = el("div", "signin-box");
+        const go = el("button", "primary small", "Save & sign in");
+        go.addEventListener("click", async () => {
+          const { name: n } = readForm();
+          if (!n) return out.replaceChildren(el("div", "connector-error", "Give it a name first"));
+          await save();
+          signIn(n);
+        });
+        box.append(el("span", "", "🔒 This server uses sign-in instead of a token."), go);
+        out.replaceChildren(box);
+      } else out.replaceChildren(el("div", "connector-error", msg));
     } finally {
       btn.disabled = false;
     }

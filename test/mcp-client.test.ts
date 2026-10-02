@@ -122,6 +122,34 @@ test("background mode queues MCP writes; approval executes them later", async ()
   assert.match(out, /saved 1/);
 });
 
+test("tool budget: relevant connector tools offered, tools.find discovers the rest", async () => {
+  // memory.* = 3 built-ins + 4 echo tools = 7 > budget 5 → built-ins + 1 connector slot + tools.find
+  const b = { ...bot(), maxTools: 5 };
+  script = [
+    { tools: [["tools.find", { query: "save a note" }]] },
+    { tools: [["mcp.echo.write_note", { note: "via find" }]] },
+    { text: "saved" },
+  ];
+  const agent = new Agent(config, store, b, "interactive", { approve: async () => "yes" }, mcp);
+  const before = requests.length;
+  await agent.send("please echo hello back to me");
+  const offered = (i: number) => requests[before + i].tools.map((t: any) => t.function.name);
+
+  assert.deepEqual(offered(0), ["memory__remember", "memory__recall", "memory__forget", "mcp__echo__echo", "tools__find"]);
+  assert.match(requests[before].messages[0].content, /3 more tools from the user's connected apps/);
+  const found = agent.messages.find((m: any) => m.name === "tools.find") as any;
+  assert.match(found.content, /mcp\.echo\.write_note/);
+  assert.ok(offered(1).includes("mcp__echo__write_note"), "found tool is offered on the next step");
+  assert.match((agent.messages.at(-2) as any).content, /saved \d/);
+
+  // Under budget: everything offered, no tools.find.
+  script = [{ text: "ok" }];
+  await new Agent(config, store, { ...bot(), maxTools: 50 }, "interactive", {}, mcp).send("hi");
+  const all = requests.at(-1).tools.map((t: any) => t.function.name);
+  assert.equal(all.length, 7);
+  assert.ok(!all.includes("tools__find"));
+});
+
 test("disabled or broken servers don't break the bot", async () => {
   await mcp.saveServer("ghost", { command: "definitely-not-a-command-xyz", bots: ["*"] });
   script = [{ text: "fine" }];
