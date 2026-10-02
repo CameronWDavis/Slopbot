@@ -3,6 +3,7 @@ import type { Director } from "./director.js";
 import { renderMarkdown } from "./markdown.js";
 import { mountMascot } from "./mascot.js";
 import { createMockApi } from "./mock-api.js";
+import { createConnectors } from "./connectors.js";
 
 declare global {
   interface Window {
@@ -29,6 +30,20 @@ const brief = (args: unknown) => {
 let bots: BotSummary[] = [];
 let current = "";
 let director: Director | null = null;
+let homeDir = "~";
+const connectors = createConnectors(
+  api,
+  () => bots.map((b) => b.name),
+  () => homeDir,
+  () => refreshConnectorCount(),
+);
+
+async function refreshConnectorCount() {
+  const n = (await api.mcpList()).filter((s) => s.def.enabled !== false).length;
+  const c = $("connectors-count");
+  c.textContent = String(n);
+  c.hidden = n === 0;
+}
 const threads = new Map<string, HTMLElement>();
 const busy = new Set<string>();
 const toolCards = new Map<string, HTMLDetailsElement>();
@@ -141,7 +156,8 @@ async function selectBot(name: string) {
 
 function showView(view: string) {
   document.querySelectorAll<HTMLButtonElement>(".view-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
-  for (const v of ["chat", "approvals", "activity", "memory"]) $(`view-${v}`).hidden = v !== view;
+  for (const v of ["chat", "approvals", "activity", "memory", "connectors"]) $(`view-${v}`).hidden = v !== view;
+  if (view === "connectors") connectors.load();
   if (view === "approvals") loadApprovals();
   if (view === "activity") loadActivity();
   if (view === "memory") loadMemory();
@@ -432,6 +448,8 @@ async function main() {
   initMascot();
   const info = await api.info();
   $("foot").textContent = `v${info.version} · ${info.dataDir}`;
+  homeDir = info.homeDir;
+  refreshConnectorCount();
   bots = await api.listBots();
   api.listModels().then((m) => {
     models = m;

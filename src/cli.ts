@@ -8,6 +8,7 @@ import { Agent, executeApproval, type AgentHooks } from "./agent/runtime.js";
 import { CONFIG_FILE, loadConfig } from "./config.js";
 import { resolveModel } from "./providers/index.js";
 import { runScheduled, startDaemon } from "./scheduler/scheduler.js";
+import { McpManager } from "./mcp/client.js";
 import { Store } from "./store/store.js";
 import { toolsFor } from "./tools/registry.js";
 
@@ -34,6 +35,7 @@ const HELP = `${c.bold("slopbot")}: open-source personal AI agents
   slopbot memory <bot>                show what a bot remembers
   slopbot ping [provider/model]       check that a model responds
   slopbot mcp                         run as an MCP server (stdio) for Claude Code etc.
+  slopbot connectors                  list MCP servers your bots use, and test them
 `;
 
 const brief = (args: Record<string, unknown>) => {
@@ -60,10 +62,14 @@ function makeHooks(rl?: readline.Interface): AgentHooks {
   };
 }
 
+let mcpManager: McpManager | undefined;
+const LONG_RUNNING = new Set(["daemon", "mcp"]);
+
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   const config = loadConfig();
   const store = new Store(config.dataDir);
+  const mcp = (mcpManager = new McpManager(config));
 
   switch (cmd) {
     case "init": {
@@ -87,7 +93,7 @@ async function main() {
     case "chat": {
       const bot = loadBot(config, need(rest[0], "bot name"));
       const rl = readline.createInterface({ input: stdin, output: stdout });
-      const agent = new Agent(config, store, bot, "interactive", makeHooks(rl));
+      const agent = new Agent(config, store, bot, "interactive", makeHooks(rl), mcp);
       console.log(c.dim(`Chatting with ${bot.name} (${bot.model ?? config.defaultModel}). /exit to quit.\n`));
       while (true) {
         let line: string;
@@ -115,7 +121,7 @@ async function main() {
       const bot = loadBot(config, need(name, "bot name"));
       const task = need(taskParts.join(" "), "task");
       const rl = bg ? undefined : readline.createInterface({ input: stdin, output: stdout });
-      const agent = new Agent(config, store, bot, bg ? "background" : "interactive", makeHooks(rl));
+      const agent = new Agent(config, store, bot, bg ? "background" : "interactive", makeHooks(rl), mcp);
       const res = await agent.send(task);
       rl?.close();
       console.log(`\n${res.text}\n`);
@@ -128,14 +134,14 @@ async function main() {
       const bot = loadBot(config, need(rest[0], "bot name"));
       const s = rest[1] ? bot.schedules.find((x) => x.name === rest[1]) : bot.schedules[0];
       if (!s) throw new Error(`Bot ${bot.name} has no schedule ${rest[1] ?? ""}`);
-      const res = await runScheduled(config, store, bot, s);
+      const res = await runScheduled(config, store, bot, s, console.log, mcp);
       if (res) console.log(`\n${res.text}`);
       return;
     }
 
     case "daemon": {
       console.log(c.bold("SlopBot daemon started. Ctrl-C to stop."));
-      startDaemon(config, store);
+      startDaemon(config, store, mcp);
       await new Promise(() => {});
       return;
     }
@@ -155,7 +161,7 @@ async function main() {
       const id = need(rest[0], "approval id");
       const a = store.listApprovals().find((x) => x.id === id);
       if (!a) throw new Error(`No approval ${id}`);
-      console.log(await executeApproval(config, store, loadBot(config, a.bot), id));
+      console.log(await executeApproval(config, store, loadBot(config, a.bot), id, mcp));
       return;
     }
 
@@ -194,11 +200,31 @@ async function main() {
       return;
     }
 
+    case "connectors": {
+      const servers = mcp.readServers();
+      if (!Object.keys(servers).length) return console.log(`No MCP servers yet. Add them in the desktop app (Connectors) or ${mcp.file}`);
+      for (const [name, def] of Object.entries(servers)) {
+        const where = def.url ?? [def.command, ...(def.args ?? [])].join(" ");
+        process.stdout.write(`${c.bold(c.cyan(name))} ${c.dim(where)}  bots: ${(def.bots ?? []).join(", ") || "none"}  `);
+        if (def.enabled === false) {
+          console.log(c.dim("disabled"));
+          continue;
+        }
+        try {
+          const conn = await mcp.connect(name);
+          console.log(c.green(`✓ ${conn.tools.length} tools`) + c.dim(`  ${conn.tools.map((t) => t.name).join(", ").slice(0, 160)}`));
+        } catch (e: any) {
+          console.log(c.red(`✗ ${e.message}`));
+        }
+      }
+      return;
+    }
+
     case "mcp": {
       // stdout is the MCP channel: nothing else may print there.
       const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
       const { createMcpServer } = await import("./mcp/server.js");
-      await createMcpServer(config, store).connect(new StdioServerTransport());
+      await createMcpServer(config, store, "0.1.0", mcp).connect(new StdioServerTransport());
       console.error(`slopbot MCP server ready (home: ${config.rootDir})`);
       return;
     }
@@ -216,7 +242,13 @@ function need(v: string | undefined, what: string): string {
   return v;
 }
 
-main().catch((e) => {
-  console.error(c.red(`error: ${e?.message ?? e}`));
-  process.exit(1);
-});
+main()
+  .then(async () => {
+    // One-shot commands: shut down MCP server subprocesses so the CLI can exit.
+    if (!LONG_RUNNING.has(process.argv[2])) await mcpManager?.closeAll();
+  })
+  .catch(async (e) => {
+    console.error(c.red(`error: ${e?.message ?? e}`));
+    await mcpManager?.closeAll();
+    process.exit(1);
+  });

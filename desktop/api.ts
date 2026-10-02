@@ -40,8 +40,37 @@ export interface ActivityItem {
   summary: string;
 }
 
+export type Risk = "read" | "write" | "external" | "dangerous";
+
+export interface McpServerDef {
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  cwd?: string;
+  url?: string;
+  headers?: Record<string, string>;
+  bots?: string[];
+  enabled?: boolean;
+  description?: string;
+}
+
+export interface McpToolInfo {
+  name: string;
+  slopName: string;
+  description: string;
+  risk: Risk;
+}
+
+export interface McpServerStatus {
+  name: string;
+  def: McpServerDef;
+  state: "disabled" | "idle" | "connecting" | "connected" | "error";
+  error?: string;
+  tools: McpToolInfo[];
+}
+
 export interface SlopbotApi {
-  info(): Promise<{ dataDir: string; rootDir: string; defaultModel: string; version: string }>;
+  info(): Promise<{ dataDir: string; rootDir: string; homeDir: string; defaultModel: string; version: string }>;
   listBots(): Promise<BotSummary[]>;
   listModels(): Promise<string[]>;
   send(bot: string, text: string, model?: string): Promise<void>;
@@ -52,6 +81,12 @@ export interface SlopbotApi {
   activity(limit?: number): Promise<ActivityItem[]>;
   memory(bot: string): Promise<{ id: string; text: string }[]>;
   openDataDir(): Promise<void>;
+  mcpList(): Promise<McpServerStatus[]>;
+  mcpConnect(name: string): Promise<McpServerStatus>;
+  mcpTest(name: string, def: McpServerDef): Promise<McpToolInfo[]>;
+  mcpSave(name: string, def: McpServerDef, previousName?: string): Promise<void>;
+  mcpRemove(name: string): Promise<void>;
+  mcpImport(json: string, bots: string[]): Promise<string[]>;
   onEvent(cb: (e: AgentEvent) => void): () => void;
   onApprovalRequest(cb: (r: ApprovalRequest) => void): () => void;
 }

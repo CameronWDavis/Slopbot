@@ -1,6 +1,6 @@
 // A fake window.slopbot so the renderer can be previewed in a plain browser (npm run desktop:preview).
 // The real app always uses the preload API.
-import type { AgentEvent, ApprovalRequest, SlopbotApi } from "../api.js";
+import type { AgentEvent, ApprovalRequest, McpServerDef, McpServerStatus, McpToolInfo, SlopbotApi } from "../api.js";
 
 export function createMockApi(): SlopbotApi {
   const eventSubs = new Set<(e: AgentEvent) => void>();
@@ -8,9 +8,28 @@ export function createMockApi(): SlopbotApi {
   const answers = new Map<string, (a: string) => void>();
   const emit = (e: AgentEvent) => eventSubs.forEach((cb) => cb(e));
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const servers = new Map<string, McpServerStatus>([
+    [
+      "knowledge-graph",
+      { name: "knowledge-graph", def: { command: "npx", args: ["-y", "@modelcontextprotocol/server-memory"], bots: ["*"], enabled: true }, state: "idle", tools: [] },
+    ],
+  ]);
+  const fakeTools = (name: string): McpToolInfo[] =>
+    [
+      ["read_graph", "read"],
+      ["search_nodes", "read"],
+      ["create_entities", "external"],
+      ["delete_entities", "dangerous"],
+    ].map(([t, risk]) => ({ name: t, slopName: `mcp.${name}.${t}`, description: `${t} (mock)`, risk: risk as McpToolInfo["risk"] }));
+  const connectMock = async (name: string, def: McpServerDef) => {
+    await sleep(900);
+    if (!def.url && !/^(npx|uvx|node|docker)$/.test(def.command ?? "")) throw new Error(`spawn ${def.command} ENOENT`);
+    if (def.url && /Bearer\s*$/.test(def.headers?.Authorization ?? "")) throw new Error("HTTP 401: Bad credentials");
+    return fakeTools(name);
+  };
 
   return {
-    info: async () => ({ dataDir: "~/SlopBot/data", rootDir: "~/SlopBot", defaultModel: "ollama/qwen3:8b", version: "preview" }),
+    info: async () => ({ dataDir: "~/SlopBot/data", rootDir: "~/SlopBot", homeDir: "/Users/you", defaultModel: "ollama/qwen3:8b", version: "preview" }),
     listBots: async () => [
       { name: "ledger", description: "Personal finance bot. Imports bank CSVs, categorizes spending, answers questions, sends weekly reports.", model: "ollama/qwen3:8b", tools: ["finance.summary", "email.send"], schedules: [{ name: "weekly-report", cron: "0 8 * * MON", task: "Weekly report" }] },
       { name: "coder", description: "Coding bot. Reads, edits, and tests code in folders you allow.", model: "ollama/qwen3:8b", tools: ["fs.read", "shell.run"], schedules: [] },
@@ -53,6 +72,34 @@ export function createMockApi(): SlopbotApi {
     ],
     memory: async () => [{ id: "m_83aee128", text: "Monthly dining budget is $150" }],
     openDataDir: async () => {},
+    mcpList: async () => [...servers.values()].map((s) => ({ ...s, state: s.def.enabled === false ? "disabled" : s.state })),
+    async mcpConnect(name) {
+      const s = servers.get(name)!;
+      try {
+        s.tools = await connectMock(name, s.def);
+        s.state = "connected";
+        s.error = undefined;
+      } catch (e: any) {
+        s.state = "error";
+        s.error = e.message;
+        s.tools = [];
+      }
+      return { ...s };
+    },
+    mcpTest: (name, def) => connectMock(name, def),
+    async mcpSave(name, def, previousName) {
+      if (previousName && previousName !== name) servers.delete(previousName);
+      const prev = servers.get(name);
+      const changed = !prev || JSON.stringify({ ...prev.def, bots: 0, enabled: 0 }) !== JSON.stringify({ ...def, bots: 0, enabled: 0 });
+      servers.set(name, { name, def, state: changed ? "idle" : prev!.state, tools: changed ? [] : prev!.tools, error: changed ? undefined : prev!.error });
+    },
+    mcpRemove: async (name) => void servers.delete(name),
+    async mcpImport(json, bots) {
+      const data = JSON.parse(json);
+      const map = data.mcpServers ?? data;
+      for (const [n, d] of Object.entries<McpServerDef>(map)) servers.set(n, { name: n, def: { ...d, bots: d.bots ?? bots, enabled: true }, state: "idle", tools: [] });
+      return Object.keys(map);
+    },
     onEvent(cb) {
       eventSubs.add(cb);
       return () => eventSubs.delete(cb);

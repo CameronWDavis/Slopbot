@@ -1,11 +1,14 @@
 // Electron main process: owns config, bots and Agent instances, and talks to the UI over IPC.
 import { app, BrowserWindow, ipcMain, net, protocol, shell } from "electron";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { loadBot, loadBots } from "../src/agent/bot.js";
 import { Agent, executeApproval } from "../src/agent/runtime.js";
 import { loadConfig, type Config } from "../src/config.js";
+import { McpManager, type McpServerDef } from "../src/mcp/client.js";
 import { Store, newId } from "../src/store/store.js";
 import { toolsFor } from "../src/tools/registry.js";
 import type { ActivityItem, AgentEvent, ApprovalRequest, BotSummary, QueuedApproval } from "./api.js";
@@ -37,6 +40,7 @@ function resolveHome(): string {
 
 let config: Config;
 let store: Store;
+let mcp: McpManager;
 let win: BrowserWindow | null = null;
 const agents = new Map<string, { agent: Agent; model?: string }>();
 const busy = new Set<string>();
@@ -61,7 +65,7 @@ function agentFor(botName: string, model?: string): Agent {
         pendingAnswers.set(req.id, resolve);
         win?.webContents.send("approval:request", req);
       }),
-  });
+  }, mcp);
   agents.set(botName, { agent, model });
   return agent;
 }
@@ -89,6 +93,7 @@ function registerIpc() {
   ipcMain.handle("info", () => ({
     dataDir: config.dataDir,
     rootDir: config.rootDir,
+    homeDir: os.homedir(),
     defaultModel: config.defaultModel ?? "",
     version: app.getVersion(),
   }));
@@ -168,7 +173,7 @@ function registerIpc() {
   ipcMain.handle("approvals:resolve", async (_e, id: string, approve: boolean) => {
     const a = store.listApprovals().find((x) => x.id === id);
     if (!a) throw new Error(`No approval ${id}`);
-    if (approve) return executeApproval(config, store, loadBot(config, a.bot), id);
+    if (approve) return executeApproval(config, store, loadBot(config, a.bot), id, mcp);
     store.updateApproval(id, { status: "denied", resolvedAt: new Date().toISOString() });
     store.audit({ bot: a.bot, session: a.session, type: "approval", tool: a.call.name, denied: id });
     return "Denied.";
@@ -184,6 +189,36 @@ function registerIpc() {
   ipcMain.handle("memory", (_e, botName: string) => store.readMemory(botName).map(({ id, text }) => ({ id, text })));
 
   ipcMain.handle("open:data", () => shell.openPath(config.dataDir));
+
+  // ── MCP connectors ─────────────────────────────────
+  // Idle conversations are dropped when servers change so bots pick up the new tools.
+  const refreshAgents = () => {
+    for (const name of agents.keys()) if (!busy.has(name)) agents.delete(name);
+  };
+  ipcMain.handle("mcp:list", () => mcp.status());
+  ipcMain.handle("mcp:connect", async (_e, name: string) => {
+    await mcp.disconnect(name);
+    try {
+      await mcp.connect(name);
+    } catch {
+      /* error is reported in status */
+    }
+    return mcp.status().find((s) => s.name === name);
+  });
+  ipcMain.handle("mcp:test", (_e, name: string, def: McpServerDef) => mcp.test(name, def));
+  ipcMain.handle("mcp:save", async (_e, name: string, def: McpServerDef, previousName?: string) => {
+    await mcp.saveServer(name, def, previousName);
+    refreshAgents();
+  });
+  ipcMain.handle("mcp:remove", async (_e, name: string) => {
+    await mcp.removeServer(name);
+    refreshAgents();
+  });
+  ipcMain.handle("mcp:import", async (_e, json: string, bots: string[]) => {
+    const names = await mcp.importJson(json, bots);
+    refreshAgents();
+    return names;
+  });
 }
 
 function createWindow() {
@@ -214,10 +249,32 @@ function createWindow() {
   win.on("closed", () => (win = null));
 }
 
+/**
+ * Apps launched from Finder/Dock get a minimal PATH, so `npx`, `uvx`, `docker` etc. used by MCP
+ * servers wouldn't be found. Borrow the PATH from the user's login shell.
+ */
+function adoptShellPath() {
+  if (process.platform === "win32") return;
+  try {
+    const shellBin = process.env.SHELL || "/bin/zsh";
+    const out = execFileSync(shellBin, ["-ilc", 'printf "__SLOPBOT_PATH__%s" "$PATH"'], { encoding: "utf8", timeout: 4000 });
+    const p = out.split("__SLOPBOT_PATH__").pop()?.trim();
+    if (p) process.env.PATH = [...new Set([...p.split(":"), ...(process.env.PATH ?? "").split(":")])].filter(Boolean).join(":");
+  } catch {
+    /* keep the existing PATH */
+  }
+}
+
+app.on("before-quit", () => {
+  void mcp?.closeAll();
+});
+
 app.whenReady().then(() => {
+  adoptShellPath();
   const home = resolveHome();
   config = loadConfig(home);
   store = new Store(config.dataDir);
+  mcp = new McpManager(config);
 
   protocol.handle("app", (req) => {
     const { pathname } = new URL(req.url);
@@ -255,6 +312,16 @@ function smokeTest(outPng: string) {
     for (let i = 0; i < 600 && busy.size; i++) await wait(100);
     await wait(900);
     const after = await js(`({ status: document.getElementById("status-text").textContent, messages: [...document.querySelectorAll(".msg, .tool")].map(n => n.className + ": " + n.textContent.slice(0, 160)) })`);
+    if (process.env.SLOPBOT_SMOKE_VIEW) {
+      await js(`document.querySelector('[data-view=${process.env.SLOPBOT_SMOKE_VIEW}]').click()`);
+      for (let i = 0; i < 100; i++) {
+        await wait(200);
+        if (!(await js(`!!document.querySelector(".connector.connecting")`))) break;
+      }
+      await wait(500);
+      await js(`document.querySelectorAll(".tool-list").forEach((d) => (d.open = true))`);
+      await wait(200);
+    }
     const img = await w.webContents.capturePage();
     fs.writeFileSync(outPng, img.toPNG());
     console.log(JSON.stringify({ home: config.rootDir, before, during, after }, null, 2));

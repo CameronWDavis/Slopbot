@@ -9,6 +9,7 @@ import { z } from "zod";
 import { loadBot, loadBots } from "../agent/bot.js";
 import { Agent, type AgentHooks } from "../agent/runtime.js";
 import type { Config } from "../config.js";
+import type { McpManager } from "./client.js";
 import type { Store } from "../store/store.js";
 import { toolsFor } from "../tools/registry.js";
 import { runScheduled } from "../scheduler/scheduler.js";
@@ -19,7 +20,7 @@ const fail = (s: string) => ({ content: [{ type: "text" as const, text: s }], is
 const APPROVAL_NOTE =
   "These actions were NOT performed. A human must approve them in the SlopBot desktop app (Approvals) or with `npm run slopbot approve <id>`.";
 
-export function createMcpServer(config: Config, store: Store, version = "0.1.0"): McpServer {
+export function createMcpServer(config: Config, store: Store, version = "0.1.0", mcp?: McpManager): McpServer {
   const server = new McpServer(
     { name: "slopbot", version },
     {
@@ -86,7 +87,7 @@ export function createMcpServer(config: Config, store: Store, version = "0.1.0")
             if (!ok) actions[actions.length - 1] += " (failed)";
           },
         };
-        conv = { agent: new Agent(config, store, bot, "background", hooks), model, actions };
+        conv = { agent: new Agent(config, store, bot, "background", hooks, mcp), model, actions };
         conversations.set(botName, conv);
       }
       const { actions } = conv;
@@ -124,7 +125,7 @@ export function createMcpServer(config: Config, store: Store, version = "0.1.0")
         const bot = loadBot(config, botName);
         const s = schedule ? bot.schedules.find((x) => x.name === schedule) : bot.schedules[0];
         if (!s) return fail(`${botName} has no schedule${schedule ? ` named ${schedule}` : "s"}.`);
-        const res = await runScheduled(config, store, bot, s, () => {});
+        const res = await runScheduled(config, store, bot, s, () => {}, mcp);
         if (!res) return fail(`${botName}/${s.name} failed; see get_activity.`);
         const pending = res.pendingApprovals.length ? `\n\nAwaiting human approval: ${res.pendingApprovals.join(", ")}\n${APPROVAL_NOTE}` : "";
         return text(res.text + pending);

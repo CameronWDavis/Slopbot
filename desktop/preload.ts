@@ -20,6 +20,12 @@ const api: SlopbotApi = {
   activity: (limit) => ipcRenderer.invoke("activity", limit),
   memory: (bot) => ipcRenderer.invoke("memory", bot),
   openDataDir: () => ipcRenderer.invoke("open:data"),
+  mcpList: () => ipcRenderer.invoke("mcp:list"),
+  mcpConnect: (name) => ipcRenderer.invoke("mcp:connect", name),
+  mcpTest: (name, def) => ipcRenderer.invoke("mcp:test", name, def),
+  mcpSave: (name, def, previousName) => ipcRenderer.invoke("mcp:save", name, def, previousName),
+  mcpRemove: (name) => ipcRenderer.invoke("mcp:remove", name),
+  mcpImport: (json, bots) => ipcRenderer.invoke("mcp:import", json, bots),
   onEvent: (cb) => subscribe<AgentEvent>("agent:event", cb),
   onApprovalRequest: (cb) => subscribe<ApprovalRequest>("approval:request", cb),
 };

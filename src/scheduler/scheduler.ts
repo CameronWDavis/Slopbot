@@ -3,12 +3,13 @@ import { Cron } from "croner";
 import { loadBots, type BotDef, type Schedule } from "../agent/bot.js";
 import { Agent } from "../agent/runtime.js";
 import type { Config } from "../config.js";
+import type { McpManager } from "../mcp/client.js";
 import type { Store } from "../store/store.js";
 import { sendMail } from "../tools/email.js";
 
-export async function runScheduled(config: Config, store: Store, bot: BotDef, s: Schedule, log = console.log) {
+export async function runScheduled(config: Config, store: Store, bot: BotDef, s: Schedule, log = console.log, mcp?: McpManager) {
   log(`▶ ${bot.name}/${s.name}: ${s.task}`);
-  const agent = new Agent(config, store, bot, "background");
+  const agent = new Agent(config, store, bot, "background", {}, mcp);
   try {
     const res = await agent.send(s.task);
     log(`✔ ${bot.name}/${s.name} finished in ${res.steps} steps${res.pendingApprovals.length ? `, ${res.pendingApprovals.length} awaiting approval` : ""}`);
@@ -25,7 +26,7 @@ export async function runScheduled(config: Config, store: Store, bot: BotDef, s:
   }
 }
 
-export function startDaemon(config: Config, store: Store) {
+export function startDaemon(config: Config, store: Store, mcp?: McpManager) {
   const bots = loadBots(config);
   const busy = new Set<string>(); // one run per bot at a time
   const jobs: Cron[] = [];
@@ -39,7 +40,7 @@ export function startDaemon(config: Config, store: Store) {
         }
         busy.add(bot.name);
         try {
-          await runScheduled(config, store, bot, s);
+          await runScheduled(config, store, bot, s, console.log, mcp);
         } finally {
           busy.delete(bot.name);
         }

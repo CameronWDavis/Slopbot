@@ -8,6 +8,7 @@ import type { Message, ToolCall, Usage } from "../providers/types.js";
 import { newId, type Store } from "../store/store.js";
 import { getTool, toolsFor } from "../tools/registry.js";
 import { expandHome, type Tool, type ToolContext } from "../tools/types.js";
+import type { McpManager } from "../mcp/client.js";
 import type { BotDef } from "./bot.js";
 import { buildSystemPrompt } from "./prompt.js";
 
@@ -64,12 +65,26 @@ export class Agent {
     public bot: BotDef,
     private mode: Mode = "interactive",
     private hooks: AgentHooks = {},
+    private mcp?: McpManager,
   ) {
     this.tools = toolsFor(bot.tools);
     this.ctx = makeToolContext(config, store, bot, this.sessionId);
   }
 
+  /** MCP tools are attached on the first message (connecting to servers is async). */
+  private mcpLoaded = false;
+  private async loadMcpTools() {
+    if (this.mcpLoaded || !this.mcp) return;
+    this.mcpLoaded = true;
+    const { tools, errors } = await this.mcp.toolsForBot(this.bot.name);
+    this.tools.push(...tools);
+    for (const [server, error] of Object.entries(errors)) {
+      this.store.audit({ bot: this.bot.name, session: this.sessionId, type: "error", error: `MCP server "${server}" unavailable: ${error}` });
+    }
+  }
+
   async send(userText: string): Promise<RunResult> {
+    await this.loadMcpTools();
     const { provider, model } = resolveModel(this.config, this.bot.model);
     const { bot, store, sessionId } = this;
     const usage: Usage = { inputTokens: 0, outputTokens: 0 };
@@ -167,11 +182,11 @@ export class Agent {
 }
 
 /** Execute a previously queued tool call exactly as it was proposed. */
-export async function executeApproval(config: Config, store: Store, bot: BotDef, approvalId: string): Promise<string> {
+export async function executeApproval(config: Config, store: Store, bot: BotDef, approvalId: string, mcp?: McpManager): Promise<string> {
   const a = store.listApprovals().find((x) => x.id === approvalId);
   if (!a) throw new Error(`No approval ${approvalId}`);
   if (a.status !== "pending") throw new Error(`Approval ${approvalId} is already ${a.status}`);
-  const tool = getTool(a.call.name);
+  const tool = getTool(a.call.name) ?? (a.call.name.startsWith("mcp.") ? await mcp?.findTool(a.call.name) : undefined);
   if (!tool) throw new Error(`Tool ${a.call.name} no longer exists`);
   const ctx = makeToolContext(config, store, bot, a.session);
   const { result, ok } = await runTool(tool, a.call, ctx);

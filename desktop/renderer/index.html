@@ -33,6 +33,7 @@
           <button class="view-btn" data-view="approvals">Approvals <span class="badge" id="approvals-badge" hidden>0</span></button>
           <button class="view-btn" data-view="activity">Activity</button>
           <button class="view-btn" data-view="memory">Memory</button>
+          <button class="view-btn" data-view="connectors">Connectors <span class="count" id="connectors-count" hidden>0</span></button>
         </nav>
         <div class="sidebar-foot" id="foot"></div>
       </aside>
@@ -73,6 +74,24 @@
           <div class="chat-head"><div><h1>Memory</h1><p class="muted" id="memory-desc"></p></div></div>
           <div class="list" id="memory"></div>
         </section>
+        <section class="view" id="view-connectors" hidden>
+          <div class="chat-head">
+            <div>
+              <h1>Connectors</h1>
+              <p class="muted">Give your bots new tools from MCP servers. Read-only tools run freely; anything else asks you first.</p>
+            </div>
+            <div class="head-actions">
+              <button class="ghost small" id="mcp-paste">Paste JSON</button>
+              <button class="primary small" id="mcp-add">+ Add server</button>
+            </div>
+          </div>
+          <div class="list">
+            <div class="section-label">Quick add</div>
+            <div class="presets" id="presets"></div>
+            <div class="section-label">Your servers</div>
+            <div class="connectors" id="connectors"></div>
+          </div>
+        </section>
       </main>
 
       <section class="stage" aria-label="Bag Buddy">
@@ -96,6 +115,52 @@
           <button class="danger" id="approval-deny">Deny</button>
           <button class="ghost" id="approval-always">Always this session</button>
           <button class="primary" id="approval-allow">Allow</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="mcp-form" hidden>
+      <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="mcp-form-title">
+        <div class="modal-tag">MCP SERVER</div>
+        <h2 id="mcp-form-title">Add MCP server</h2>
+        <label class="field"><span>Name</span><input id="mcp-name" placeholder="e.g. github" autocomplete="off" /></label>
+        <div class="segmented" id="mcp-kind">
+          <button type="button" data-kind="command" class="active">Local command</button>
+          <button type="button" data-kind="url">Remote URL</button>
+        </div>
+        <div id="mcp-command-fields">
+          <label class="field"><span>Command</span><input id="mcp-cmd" class="mono" placeholder="npx -y @modelcontextprotocol/server-filesystem ~/Documents" autocomplete="off" spellcheck="false" /></label>
+          <div class="field"><span>Environment variables <em class="muted">(API keys; use ${NAME} to read from your .env)</em></span><div id="mcp-env"></div><button type="button" class="ghost small" id="mcp-add-env">+ Variable</button></div>
+        </div>
+        <div id="mcp-url-fields" hidden>
+          <label class="field"><span>Server URL</span><input id="mcp-url" class="mono" placeholder="https://example.com/mcp" autocomplete="off" spellcheck="false" /></label>
+          <div class="field"><span>Headers</span><div id="mcp-headers"></div><button type="button" class="ghost small" id="mcp-add-header">+ Header</button></div>
+        </div>
+        <p class="note" id="mcp-note" hidden></p>
+        <div class="field"><span>Bots that can use it</span><div class="checks" id="mcp-bots"></div></div>
+        <div id="mcp-test-result"></div>
+        <div class="modal-actions">
+          <button class="ghost" id="mcp-cancel">Cancel</button>
+          <button class="ghost" id="mcp-test">Test connection</button>
+          <button class="primary" id="mcp-save">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="mcp-import" hidden>
+      <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="mcp-import-title">
+        <div class="modal-tag">IMPORT</div>
+        <h2 id="mcp-import-title">Paste MCP JSON</h2>
+        <p class="muted">Paste an <code>mcpServers</code> block from Claude Desktop, Cursor, or a server's README. Every server in it is added for all bots.</p>
+        <textarea id="mcp-json" class="code json-input" spellcheck="false" placeholder='{
+  "mcpServers": {
+    "memory": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-memory"] }
+  }
+}'></textarea>
+        <div id="mcp-import-result"></div>
+        <div class="modal-actions">
+          <button class="ghost" id="mcp-import-cancel">Cancel</button>
+          <button class="primary" id="mcp-import-go">Import</button>
         </div>
       </div>
     </div>
