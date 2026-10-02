@@ -50,13 +50,20 @@ const brief = (args: Record<string, unknown>) => {
   return s.length > 160 ? s.slice(0, 160) + "…" : s;
 };
 
+let searchHintShown = false;
+
 function makeHooks(rl?: readline.Interface): AgentHooks {
   return {
     onToolCall: (call, d) =>
       console.log(c.dim(`  → ${call.name} ${brief(call.args)}`) + (d.action === "deny" ? c.red(`  ✖ ${d.reason}`) : "")),
-    onToolResult: (_call, result, ok) => {
+    onToolResult: (call, result, ok) => {
       const first = result.split("\n").slice(0, 3).join(" ⏎ ");
       console.log(c.dim(`    ${ok ? "✓" : c.red("✗")} ${first.slice(0, 200)}`));
+      if (call.name === "web.search" && ok && !searchHintShown && /source="web\.search:basic"/.test(result)) {
+        searchHintShown = true;
+        console.log(c.yellow("    tip: search is limited to encyclopedia-style results. Add a free key for the full web:"));
+        console.log(c.yellow("         npm run slopbot secret set search.brave   (or search.ollama / search.tavily)"));
+      }
     },
     approve: rl
       ? async (call, d) => {

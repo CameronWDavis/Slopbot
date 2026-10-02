@@ -189,10 +189,16 @@ const PROVIDERS: { id: SearchProvider; label: string; blurb: string; keyUrl?: st
 
 export function createSearchCard(api: SlopbotApi) {
   let s: SearchSettings | null = null;
+  let focus: SearchProvider | undefined;
 
   async function load() {
     s = await api.searchGet();
     render();
+  }
+
+  /** On the next load, preselect this provider and put the cursor in its key field (used by the chat tip). */
+  function focusNext(provider: SearchProvider) {
+    focus = provider;
   }
 
   function render() {
@@ -275,8 +281,21 @@ export function createSearchCard(api: SlopbotApi) {
     row.append(sel, save, testBtn);
     card.append(row, blurb, keyRow, url, out);
     box.replaceChildren(card);
-    sync();
+    if (focus) {
+      sel.value = focus;
+      focus = undefined;
+      sync();
+      card.classList.add("spotlight");
+      card.scrollIntoView({ block: "start" });
+      key.focus();
+    } else sync();
   }
 
-  return { load };
+  /** True when a keyed provider (or SearXNG) is set up, i.e. searches aren't limited to Basic. */
+  async function upgraded() {
+    const st = await api.searchGet();
+    return st.active !== "basic";
+  }
+
+  return { load, focusNext, upgraded };
 }

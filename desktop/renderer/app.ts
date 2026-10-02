@@ -276,6 +276,7 @@ function onEvent(e: AgentEvent) {
       state.textContent = e.ok ? "done" : "failed";
       const body = card.querySelector(".tool-body")!;
       body.append(el("div", "label", "result"), el("pre", "code", e.result));
+      if (e.name === "web.search" && e.ok && /source="web\.search:basic"/.test(e.result)) maybeSearchTip(e.bot);
       break;
     }
 
@@ -300,6 +301,44 @@ function onEvent(e: AgentEvent) {
       append(e.bot, errorMsg(e.error));
       break;
   }
+}
+
+// ── one-time nudge: Basic search is limited; offer to add a free key ──
+const TIP_KEY = "slopbot.searchTip.dismissed";
+let searchTipShownThisSession = false;
+
+async function maybeSearchTip(bot: string) {
+  let dismissed = false;
+  try {
+    dismissed = localStorage.getItem(TIP_KEY) === "1";
+  } catch {}
+  if (dismissed || searchTipShownThisSession || (await searchCard.upgraded())) return;
+  searchTipShownThisSession = true;
+
+  const tip = el("div", "tip");
+  tip.append(
+    el("span", "tip-icon", "🔎"),
+    el("div", "tip-text", "Searches are limited to encyclopedia-style results right now. Add a free search key (Brave, Ollama, or Tavily) and your bots get the full web."),
+  );
+  const actions = el("div", "tip-actions");
+  const setup = el("button", "primary small", "Set up web search");
+  const later = el("button", "ghost small", "Not now");
+  const never = el("button", "ghost small", "Don't show again");
+  setup.addEventListener("click", () => {
+    tip.remove();
+    searchCard.focusNext("brave");
+    showView("connectors"); // loads the search card once, which applies the focus
+  });
+  later.addEventListener("click", () => tip.remove());
+  never.addEventListener("click", () => {
+    try {
+      localStorage.setItem(TIP_KEY, "1");
+    } catch {}
+    tip.remove();
+  });
+  actions.append(setup, later, never);
+  tip.append(actions);
+  append(bot, tip);
 }
 
 function finish(bot: string, ok: boolean) {

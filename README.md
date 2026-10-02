@@ -138,6 +138,10 @@ schedules:
 `fs.list/read/search/write/edit` · `shell.run` · `http.fetch` · `memory.remember/recall/forget` ·
 `email.send/draft` · `finance.import_csv/add/query/summary/categorize`
 
+## Branding
+
+The approved green app icon and SlopBot logo are in [`assets/branding/`](assets/branding/README.md), with instructions for updating the README, desktop UI, and packaged application icons.
+
 ## Development
 
 ```bash
