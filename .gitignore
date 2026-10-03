@@ -17,3 +17,8 @@ release/
 # Local Blender projects and automatic backups (publish exported models only).
 *.blend
 *.blend[0-9]*
+
+# Private: design notes and local dev-tool settings
+SPEC.md
+.claude/
+CLAUDE.md
