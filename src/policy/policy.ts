@@ -63,6 +63,7 @@ export function evaluate(
   risk: Risk,
   mode: Mode,
   sessionAllow: Set<string> = new Set(),
+  allowKey: string = call.name,
 ): Decision {
   // 1. Hard rules.
   if (call.name === "shell.run") {
@@ -88,7 +89,7 @@ export function evaluate(
   }
 
   // "Always allow for this session", granted at an interactive prompt.
-  if (mode === "interactive" && sessionAllow.has(call.name)) {
+  if (mode === "interactive" && sessionAllow.has(allowKey)) {
     return { action: "allow", reason: "allowed for this session" };
   }
 

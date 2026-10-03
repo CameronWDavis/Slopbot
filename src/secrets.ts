@@ -291,3 +291,24 @@ export function looksSecret(name: string, value: string): boolean {
   // Long, random-looking strings (no spaces/slashes, mixed letters and digits).
   return value.length >= 24 && !/[\s/]/.test(value) && /[A-Za-z]/.test(value) && /\d/.test(value);
 }
+
+// ── scrubbing secrets out of text that gets written to disk ─────────────
+// Logs and saved conversations must not keep keys that happen to appear in messages, URLs,
+// request bodies or tool output. Recognizable credential formats are replaced with [redacted].
+const SCRUB_PATTERNS: [RegExp, string][] = [
+  [/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "[redacted private key]"],
+  [/\b(Bearer|Basic)\s+(?=[A-Za-z0-9._~+/-]*\d)[A-Za-z0-9._~+/=-]{12,}/g, "$1 [redacted]"],
+  [/\b(?:sk-(?:proj-|ant-(?:api\d+-)?)?|sk_(?:live|test)_|rk_(?:live|test)_|pk_live_|ghp_|gho_|ghu_|ghs_|ghr_|github_pat_|glpat-|xox[abpr]-|hf_|lin_api_|ntn_|shpat_|tvly-|gsk_|AIza)[A-Za-z0-9_-]{10,}/g, "[redacted]"],
+  [/\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g, "[redacted]"],
+  [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}/g, "[redacted jwt]"],
+  [/\b\d{8,10}:AA[A-Za-z0-9_-]{30,}/g, "[redacted]"], // Telegram bot token
+  [/(\/\/)[^/\s:@'"]+:[^/\s@'"]+@/g, "$1[redacted]@"], // user:password@ in URLs
+  [/([?&](?:api[_-]?key|apikey|key|token|access_token|refresh_token|secret|client_secret|password|pass|auth|sig|signature)=)[^&\s"'<>]+/gi, "$1[redacted]"],
+  [/("(?:password|passwd|secret|api_?key|apikey|token|access_token|refresh_token|client_secret|private_key)"\s*:\s*")[^"]{4,}"/gi, '$1[redacted]"'],
+];
+
+export function scrubSecrets(text: string): string {
+  let out = text;
+  for (const [re, rep] of SCRUB_PATTERNS) out = out.replace(re, rep);
+  return out;
+}

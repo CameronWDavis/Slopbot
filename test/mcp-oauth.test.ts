@@ -138,12 +138,13 @@ test("sign in: discovery → registration → browser → PKCE token → connect
   const st = mcp.status()[0];
   assert.equal(st.state, "connected");
   assert.equal(st.oauth, "signed_in");
-  assert.deepEqual(st.tools.map((t) => [t.name, t.risk]), [["list_pages", "read"], ["create_page", "external"]]);
+  // Not marked trusted, so even the read-only tool asks first.
+  assert.deepEqual(st.tools.map((t) => [t.name, t.risk]), [["list_pages", "external"], ["create_page", "external"]]);
 
   // Tokens are stored privately and reused by a fresh manager (e.g. the CLI or a restart) with no browser.
   assert.equal(mcp.auth.secrets.kind, "file");
   const file = path.join((mcp as any).config.dataDir, "secrets", "mcp-oauth_notes.secret");
-  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  if (process.platform !== "win32") assert.equal(fs.statSync(file).mode & 0o777, 0o600);
   assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).tokens.access_token, "tok-1");
   await mcp.closeAll();
   const later = new McpManager((mcp as any).config);

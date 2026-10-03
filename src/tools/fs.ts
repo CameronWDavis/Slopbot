@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { obj, safePath, type Tool } from "./types.js";
+import { obj, safePath, type Tool, type ToolContext } from "./types.js";
 
 const IGNORE = new Set(["node_modules", ".git", "dist", "build", ".next", "__pycache__", ".venv"]);
 
@@ -13,6 +13,38 @@ function walk(dir: string, depth: number, out: string[], base: string, limit = 5
     if (out.length >= limit) return;
     if (ent.isDirectory() && depth > 1) walk(full, depth - 1, out, base, limit);
   }
+}
+
+/**
+ * Read a text file only if its real location (after resolving every symlink) is inside the
+ * sandbox. O_NOFOLLOW makes the open fail if the final path component was swapped for a symlink
+ * after the check, so the check and the read refer to the same file.
+ */
+export function readInSandbox(ctx: ToolContext, p: string, maxBytes = Infinity): string {
+  const real = safePath(ctx, p); // resolves symlinks and enforces the allowed roots
+  const fd = fs.openSync(real, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+  try {
+    const st = fs.fstatSync(fd);
+    if (!st.isFile()) throw new Error(`"${p}" is not a regular file`);
+    if (st.size > maxBytes) throw new Error(`"${p}" is larger than ${maxBytes} bytes`);
+    return fs.readFileSync(fd, "utf8");
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/** Write a file inside the sandbox without following a symlink planted at the final path component. */
+export function writeInSandbox(ctx: ToolContext, p: string, content: string): string {
+  const file = safePath(ctx, p);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  safePath(ctx, path.dirname(file)); // the directory we just created must still be inside
+  const fd = fs.openSync(file, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | (fs.constants.O_NOFOLLOW ?? 0), 0o644);
+  try {
+    fs.writeFileSync(fd, content);
+  } finally {
+    fs.closeSync(fd);
+  }
+  return file;
 }
 
 export const fsTools: Tool[] = [
@@ -44,7 +76,7 @@ export const fsTools: Tool[] = [
       ["path"],
     ),
     async run({ path: p, offset = 1, limit = 400 }, ctx) {
-      const lines = fs.readFileSync(safePath(ctx, p), "utf8").split("\n");
+      const lines = readInSandbox(ctx, p).split("\n");
       const start = Math.max(1, offset);
       const slice = lines.slice(start - 1, start - 1 + limit);
       const body = slice.map((l, i) => `${String(start + i).padStart(5)}  ${l}`).join("\n");
@@ -74,8 +106,8 @@ export const fsTools: Tool[] = [
         const full = path.join(root, rel);
         let text: string;
         try {
-          if (fs.statSync(full).size > 1_000_000) continue;
-          text = fs.readFileSync(full, "utf8");
+          // Symlinks are resolved and checked per file: one pointing outside the sandbox is skipped.
+          text = readInSandbox(ctx, full, 1_000_000);
         } catch {
           continue;
         }
@@ -94,9 +126,7 @@ export const fsTools: Tool[] = [
     risk: "write",
     parameters: obj({ path: { type: "string" }, content: { type: "string" } }, ["path", "content"]),
     async run({ path: p, content }, ctx) {
-      const file = safePath(ctx, p);
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, content);
+      const file = writeInSandbox(ctx, p, content);
       return `Wrote ${Buffer.byteLength(content)} bytes to ${file}`;
     },
   },
@@ -114,12 +144,11 @@ export const fsTools: Tool[] = [
       ["path", "old_string", "new_string"],
     ),
     async run({ path: p, old_string, new_string, replace_all = false }, ctx) {
-      const file = safePath(ctx, p);
-      const text = fs.readFileSync(file, "utf8");
+      const text = readInSandbox(ctx, p);
       const count = text.split(old_string).length - 1;
       if (count === 0) throw new Error("old_string not found in file");
       if (count > 1 && !replace_all) throw new Error(`old_string appears ${count} times; add context or set replace_all`);
-      fs.writeFileSync(file, replace_all ? text.split(old_string).join(new_string) : text.replace(old_string, () => new_string));
+      const file = writeInSandbox(ctx, p, replace_all ? text.split(old_string).join(new_string) : text.replace(old_string, () => new_string));
       return `Edited ${file} (${replace_all ? count : 1} replacement${count > 1 && replace_all ? "s" : ""})`;
     },
   },

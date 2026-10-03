@@ -26,7 +26,7 @@ test("encrypted at rest; list never includes secrets", () => {
   vault.upsert({ name: "Bank", kind: "login", domains: ["mybank.com"], username: "cam", secret: "hunter2-but-longer" });
   const raw = fs.readFileSync(vault.file, "utf8");
   for (const leak of [SECRET, "hunter2", "GitHub", "mybank", "cam"]) assert.ok(!raw.includes(leak), `"${leak}" must not appear in the file`);
-  assert.equal(fs.statSync(vault.file).mode & 0o777, 0o600);
+  if (process.platform !== "win32") assert.equal(fs.statSync(vault.file).mode & 0o777, 0o600);
   assert.match(JSON.parse(raw).id, /^[0-9a-f]{16}$/);
   assert.equal(vault.keyName, `vault.key.${JSON.parse(raw).id}`, "each vault has its own key name");
   const list = vault.list();
@@ -112,7 +112,8 @@ after(() => srv.close());
 
 const fetchTool = httpTools.find((t) => t.name === "http.fetch")!;
 function ctxWith(vault: Vault, botName = "coder") {
-  return { bot: { name: botName } as BotDef, vault, config: {} as Config } as any;
+  // The test API runs on 127.0.0.1, which bots may only reach when it's explicitly allowed.
+  return { bot: { name: botName } as BotDef, vault, config: { network: { allow: [], allowPrivate: ["127.0.0.1"] } } as unknown as Config } as any;
 }
 
 test("http.fetch injects the credential, and scrubs it from the response the model sees", async () => {
@@ -137,11 +138,11 @@ test("a credential can't be sent to the wrong site, even via redirect, and the m
 });
 
 test("using a credential or changing data asks the user by default", () => {
-  const config = { policy: { rules: [] } } as unknown as Config;
-  const bot = { permissions: [] } as unknown as BotDef;
-  const risk = (args: any) => fetchTool.riskFor!(args);
+  const config = { policy: { rules: [] }, network: { allow: [], allowPrivate: [] } } as unknown as Config;
+  const bot = { permissions: [], network: { allow: ["example.com"] } } as unknown as BotDef;
+  const risk = (args: any) => fetchTool.riskFor!(args, { bot, config });
   const decide = (args: any) => evaluate(config, bot, { id: "1", name: "http.fetch", args }, risk(args), "interactive").action;
-  assert.equal(decide({ url: "https://example.com" }), "allow");
+  assert.equal(decide({ url: "https://example.com" }), "allow", "allow-listed site");
   assert.equal(decide({ url: "https://api.github.com/user", credential: "GitHub" }), "ask");
   assert.equal(decide({ url: "https://example.com", method: "POST" }), "ask");
 });

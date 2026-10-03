@@ -23,8 +23,13 @@ export interface Tool {
   name: string;
   description: string;
   risk: Risk;
-  /** Risk can depend on the arguments (e.g. sending a credential). Defaults to `risk`. */
-  riskFor?: (args: any) => Risk;
+  /** Risk can depend on the arguments and the bot (e.g. which site a request goes to). Defaults to `risk`. */
+  riskFor?: (args: any, ctx: { bot: BotDef; config: Config }) => Risk;
+  /**
+   * What "Always this session" remembers. Defaults to the tool name; http.fetch narrows it to one
+   * site so approving one site doesn't approve the whole internet.
+   */
+  approvalKey?: (args: any) => string;
   parameters: Record<string, unknown>;
   run(args: any, ctx: ToolContext): Promise<string>;
 }

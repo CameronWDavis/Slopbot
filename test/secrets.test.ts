@@ -34,7 +34,7 @@ test("file backend round-trips with 0600 permissions", () => {
   const store = new FileSecrets(dir);
   roundtrip(store);
   store.set("k", "v");
-  assert.equal(fs.statSync(path.join(dir, "k.secret")).mode & 0o777, 0o600);
+  if (process.platform !== "win32") assert.equal(fs.statSync(path.join(dir, "k.secret")).mode & 0o777, 0o600);
 });
 
 test("OAuth token files from older versions migrate into the secret store", () => {

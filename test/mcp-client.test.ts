@@ -12,7 +12,9 @@ import { McpManager, riskFromAnnotations, slopToolName } from "../src/mcp/client
 import { Store } from "../src/store/store.js";
 
 const root = path.join(import.meta.dirname, "..");
-const TSX = path.join(root, "node_modules/.bin/tsx");
+// Run the fixture with this Node + tsx's CLI (node_modules/.bin/tsx is a .cmd shim on Windows).
+const NODE = process.execPath;
+const TSX_CLI = path.join(root, "node_modules/tsx/dist/cli.mjs");
 const FIXTURE = path.join(root, "test/fixtures/echo-mcp.ts");
 
 let script: Array<{ tools?: Array<[string, object]>; text?: string }> = [];
@@ -58,14 +60,16 @@ const bot = (name = "ledger"): BotDef => ({ name, description: "", persona: "tes
 test("naming and risk mapping", () => {
   assert.equal(slopToolName("Echo Server", "wipe.all notes"), "mcp.echo_server.wipe_all_notes");
   assert.ok(slopToolName("s", "x".repeat(200)).replace(/\./g, "__").length <= 64);
-  assert.equal(riskFromAnnotations({ readOnlyHint: true }), "read");
+  assert.equal(riskFromAnnotations({ readOnlyHint: true }), "external", "untrusted servers' read-only labels aren't believed");
+  assert.equal(riskFromAnnotations({ readOnlyHint: true }, true), "read");
   assert.equal(riskFromAnnotations({ destructiveHint: true }), "dangerous");
+  assert.equal(riskFromAnnotations({ readOnlyHint: true, destructiveHint: true }, true), "dangerous", "destructive is never downgraded");
   assert.equal(riskFromAnnotations(undefined), "external");
 });
 
 test("import Claude Desktop JSON, test connection, per-bot assignment", async () => {
   const names = await mcp.importJson(
-    JSON.stringify({ mcpServers: { echo: { command: TSX, args: [FIXTURE], env: { ECHO_TOKEN: "${SECRET_FOR_TEST}" } } } }),
+    JSON.stringify({ mcpServers: { echo: { command: NODE, args: [TSX_CLI, FIXTURE], env: { ECHO_TOKEN: "${SECRET_FOR_TEST}" } } } }),
     ["ledger"],
   );
   assert.deepEqual(names, ["echo"]);
@@ -74,6 +78,12 @@ test("import Claude Desktop JSON, test connection, per-bot assignment", async ()
   assert.deepEqual(mcp.serversForBot("ledger"), ["echo"]);
   assert.deepEqual(mcp.serversForBot("coder"), []);
 
+  // Imported servers start untrusted: the read-only "echo" still asks.
+  const untrusted = await mcp.test("echo", mcp.readServers().echo);
+  assert.equal(mcp.readServers().echo.trusted, undefined);
+  assert.deepEqual(untrusted.find((t) => t.name === "echo"), { name: "echo", slopName: "mcp.echo.echo", description: "Echo text back", risk: "external", claimsReadOnly: true });
+  // Once the user trusts the server, its read-only label counts.
+  await mcp.saveServer("echo", { ...mcp.readServers().echo, trusted: true });
   const tools = await mcp.test("echo", mcp.readServers().echo);
   assert.deepEqual(
     tools.map((t) => [t.slopName, t.risk]),

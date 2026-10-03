@@ -18,5 +18,8 @@ maxSteps: 40
 # Point the bot at your projects. Relative paths resolve from the SlopBot folder.
 allowedPaths:
   # - ~/code/my-app
+# Documentation sites this bot may read without asking; other sites ask first.
+network:
+  allow: [developer.mozilla.org, nodejs.org, docs.python.org, typescriptlang.org]
 permissions:
   - { tool: "shell.run", action: ask }   # every command is shown to you first

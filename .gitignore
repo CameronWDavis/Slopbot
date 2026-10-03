@@ -2,6 +2,18 @@ node_modules/
 dist/
 data/
 .env
+.env.*
+!.env.example
 slopbot.config.yaml
+slopbot.mcp.json
+*.local
+*.pem
+*.p12
+*.pfx
 dist-desktop/
 release/
+.DS_Store
+
+# Local Blender projects and automatic backups (publish exported models only).
+*.blend
+*.blend[0-9]*

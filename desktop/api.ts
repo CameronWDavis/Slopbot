@@ -52,6 +52,7 @@ export interface McpServerDef {
   bots?: string[];
   enabled?: boolean;
   description?: string;
+  trusted?: boolean;
 }
 
 export interface McpToolInfo {
@@ -59,6 +60,7 @@ export interface McpToolInfo {
   slopName: string;
   description: string;
   risk: Risk;
+  claimsReadOnly?: boolean;
 }
 
 export interface McpServerStatus {

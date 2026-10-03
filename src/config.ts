@@ -26,6 +26,19 @@ export interface Config {
   smtp?: SmtpConfig;
   policy: { rules: PolicyRule[] };
   maxToolOutputChars: number;
+  /**
+   * Run approved shell commands in the OS sandbox (macOS sandbox-exec, Linux bwrap). Default true.
+   * The environment is always stripped of API keys either way.
+   */
+  shellSandbox?: boolean;
+  /** Days to keep conversations, activity and resolved approvals (default 30; 0 = forever). */
+  retentionDays?: number;
+  /**
+   * Network rules for bots' http.fetch. `allow`: sites any bot may fetch without asking.
+   * `allowPrivate`: local/LAN destinations ("host" or "host:port") bots may reach at all;
+   * everything private is blocked otherwise.
+   */
+  network?: { allow: string[]; allowPrivate: string[] };
   /** Web search settings (keys live in the secret store as search.<provider>). */
   search?: SearchConfig;
   /** Default tool budget per step: a number, or "auto" (20 for local models, 64 for hosted). */
@@ -99,7 +112,13 @@ export function loadConfig(rootDir = process.env.SLOPBOT_HOME ? path.resolve(pro
     smtp,
     policy: { rules: raw.policy?.rules ?? [] },
     maxToolOutputChars: raw.maxToolOutputChars ?? 12_000,
+    shellSandbox: raw.shellSandbox !== false,
+    retentionDays: typeof raw.retentionDays === "number" ? raw.retentionDays : 30,
     maxTools: typeof raw.maxTools === "number" ? raw.maxTools : "auto",
     search: raw.search,
+    network: {
+      allow: Array.isArray(raw.network?.allow) ? raw.network.allow.map(String) : [],
+      allowPrivate: Array.isArray(raw.network?.allowPrivate) ? raw.network.allowPrivate.map(String) : [],
+    },
   };
 }

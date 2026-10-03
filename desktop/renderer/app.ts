@@ -522,7 +522,8 @@ async function main() {
   wire();
   initMascot();
   const info = await api.info();
-  $("foot").textContent = `v${info.version} · ${info.dataDir}`;
+  const tilde = (p: string) => (info.homeDir && p.startsWith(info.homeDir) ? "~" + p.slice(info.homeDir.length) : p);
+  $("foot").textContent = `v${info.version} · ${tilde(info.dataDir)}`;
   homeDir = info.homeDir;
   $("secrets-note").textContent =
     info.secrets === "keychain" ? "Sign-in tokens are kept in your macOS Keychain." : info.secrets === "libsecret" ? "Sign-in tokens are kept in your system keyring." : "";

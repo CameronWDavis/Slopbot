@@ -171,13 +171,15 @@ export class Agent {
       return `Error: tool "${call.name}" is not available to you. Available: ${this.tools.map((t) => t.name).join(", ")}`;
     }
 
-    let decision = evaluate(this.config, bot, call, tool.riskFor?.(call.args) ?? tool.risk, this.mode, this.sessionAllow);
+    const allowKey = tool.approvalKey?.(call.args) ?? call.name;
+    const risk = tool.riskFor?.(call.args, { bot, config: this.config }) ?? tool.risk;
+    let decision = evaluate(this.config, bot, call, risk, this.mode, this.sessionAllow, allowKey);
     this.hooks.onToolCall?.(call, decision);
 
     if (decision.action === "ask") {
       if (this.hooks.approve) {
         const answer = await this.hooks.approve(call, decision);
-        if (answer === "always") this.sessionAllow.add(call.name);
+        if (answer === "always") this.sessionAllow.add(allowKey);
         decision = answer === "no" ? { action: "deny", reason: "user declined" } : { action: "allow", reason: "user approved" };
         store.audit({ bot: bot.name, session: sessionId, type: "approval", tool: call.name, args: call.args, answer });
       } else {

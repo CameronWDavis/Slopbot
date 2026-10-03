@@ -133,7 +133,7 @@ test("token: validated with Telegram, stored in the secret store, never in the s
   assert.equal(secrets.get("channel.telegram.token"), TOKEN);
   const stateFile = fs.readFileSync(path.join(config.dataDir, "channels", "telegram.json"), "utf8");
   assert.ok(!stateFile.includes("AAH-test"), "token not in plain files");
-  assert.equal(fs.statSync(path.join(config.dataDir, "channels", "telegram.json")).mode & 0o777, 0o600);
+  if (process.platform !== "win32") assert.equal(fs.statSync(path.join(config.dataDir, "channels", "telegram.json")).mode & 0o777, 0o600);
 });
 
 test("pairing: deep-link code links the owner; wrong codes burn the code; strangers get silence", async () => {

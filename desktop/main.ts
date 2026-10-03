@@ -422,7 +422,7 @@ app.whenReady().then(() => {
   home = resolveHome();
   config = loadConfig(home);
   ollama = new Ollama(ollamaUrl(config));
-  store = new Store(config.dataDir);
+  store = new Store(config.dataDir, { retentionDays: config.retentionDays });
   mcp = new McpManager(config, (url) => shell.openExternal(url));
 
   protocol.handle("app", (req) => {

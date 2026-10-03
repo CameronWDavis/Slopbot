@@ -12,47 +12,47 @@ interface Preset {
 }
 
 const PRESETS: Preset[] = [
-  { name: "notion", title: "Notion", blurb: "Pages and databases (sign in with Notion)", def: () => ({ url: "https://mcp.notion.com/mcp" }), signIn: true },
-  { name: "linear", title: "Linear", blurb: "Issues and projects (sign in with Linear)", def: () => ({ url: "https://mcp.linear.app/mcp" }), signIn: true },
-  { name: "sentry", title: "Sentry", blurb: "Errors and releases (sign in with Sentry)", def: () => ({ url: "https://mcp.sentry.dev/mcp" }), signIn: true },
-  { name: "atlassian", title: "Jira & Confluence", blurb: "Atlassian Cloud (sign in with Atlassian)", def: () => ({ url: "https://mcp.atlassian.com/v1/mcp" }), signIn: true },
+  { name: "notion", title: "Notion", blurb: "Pages and databases (sign in with Notion)", def: () => ({ trusted: true, url: "https://mcp.notion.com/mcp" }), signIn: true },
+  { name: "linear", title: "Linear", blurb: "Issues and projects (sign in with Linear)", def: () => ({ trusted: true, url: "https://mcp.linear.app/mcp" }), signIn: true },
+  { name: "sentry", title: "Sentry", blurb: "Errors and releases (sign in with Sentry)", def: () => ({ trusted: true, url: "https://mcp.sentry.dev/mcp" }), signIn: true },
+  { name: "atlassian", title: "Jira & Confluence", blurb: "Atlassian Cloud (sign in with Atlassian)", def: () => ({ trusted: true, url: "https://mcp.atlassian.com/v1/mcp" }), signIn: true },
   {
     name: "files",
     title: "Filesystem",
     blurb: "Read and write files in a folder you pick",
-    def: (home) => ({ command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem", `${home}/Documents`] }),
+    def: (home) => ({ trusted: true, command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem", `${home}/Documents`] }),
     note: "The last part of the command is the folder it can access. Change it to any folder.",
   },
   {
     name: "browser",
     title: "Browser",
     blurb: "A real Playwright browser your bot can drive",
-    def: () => ({ command: "npx", args: ["-y", "@playwright/mcp@latest"] }),
+    def: () => ({ trusted: true, command: "npx", args: ["-y", "@playwright/mcp@latest"] }),
   },
   {
     name: "github",
     title: "GitHub",
     blurb: "Repos, issues and PRs via GitHub's hosted server",
-    def: () => ({ url: "https://api.githubcopilot.com/mcp/", headers: { Authorization: "Bearer " } }),
+    def: () => ({ trusted: true, url: "https://api.githubcopilot.com/mcp/", headers: { Authorization: "Bearer " } }),
     note: "Paste a GitHub personal access token after “Bearer ” (github.com → Settings → Developer settings → Tokens).",
   },
   {
     name: "knowledge-graph",
     title: "Knowledge graph",
     blurb: "Long-term memory as entities and relations",
-    def: () => ({ command: "npx", args: ["-y", "@modelcontextprotocol/server-memory"] }),
+    def: () => ({ trusted: true, command: "npx", args: ["-y", "@modelcontextprotocol/server-memory"] }),
   },
   {
     name: "sequential-thinking",
     title: "Sequential thinking",
     blurb: "A step-by-step reasoning scratchpad",
-    def: () => ({ command: "npx", args: ["-y", "@modelcontextprotocol/server-sequential-thinking"] }),
+    def: () => ({ trusted: true, command: "npx", args: ["-y", "@modelcontextprotocol/server-sequential-thinking"] }),
   },
   {
     name: "everything",
     title: "Everything (demo)",
     blurb: "Reference server with sample tools, good for testing",
-    def: () => ({ command: "npx", args: ["-y", "@modelcontextprotocol/server-everything"] }),
+    def: () => ({ trusted: true, command: "npx", args: ["-y", "@modelcontextprotocol/server-everything"] }),
   },
 ];
 
@@ -148,7 +148,9 @@ export function createConnectors(api: SlopbotApi, getBots: () => string[], getHo
     for (const t of tools) {
       const row = el("div", "tool-row");
       row.title = t.description;
-      row.append(el("span", "tool-name", t.name), el("span", `risk ${t.risk}`, RISK_LABEL[t.risk] ?? t.risk));
+      const label = t.claimsReadOnly ? "asks first · says read-only" : (RISK_LABEL[t.risk] ?? t.risk);
+      row.append(el("span", "tool-name", t.name), el("span", `risk ${t.risk}`, label));
+      if (t.claimsReadOnly) row.title = `${t.description}\n\nThe server labels this read-only, but you haven't marked the server as trusted, so it asks first.`;
       ul.append(row);
     }
     det.append(ul);
@@ -182,6 +184,7 @@ export function createConnectors(api: SlopbotApi, getBots: () => string[], getHo
         card.append(head);
 
         if (s.oauth === "signed_in") head.insertBefore(el("span", "tag ok-tag", "signed in"), sw);
+        if (s.def.trusted) head.insertBefore(el("span", "tag", "trusted"), sw);
         const stateText = signingIn.has(s.name)
           ? "Finish signing in in your browser, then come back here…"
           : s.state === "connecting"
@@ -229,8 +232,17 @@ export function createConnectors(api: SlopbotApi, getBots: () => string[], getHo
           });
           actions.append(out);
         }
+        const trust = el("button", "ghost small", s.def.trusted ? "Stop trusting" : "Trust labels");
+        trust.title = s.def.trusted
+          ? "Ask before every tool on this server except ones it labels destructive (which always ask)"
+          : "Let tools this server labels read-only run without asking. Only do this for servers you trust.";
+        trust.addEventListener("click", async () => {
+          await api.mcpSave(s.name, { ...s.def, trusted: !s.def.trusted });
+          await load();
+          onChange();
+        });
         if (s.state !== "needs_auth") actions.append(retry);
-        actions.append(edit, rm);
+        actions.append(trust, edit, rm);
         card.append(actions);
         return card;
       }),
@@ -364,7 +376,7 @@ export function createConnectors(api: SlopbotApi, getBots: () => string[], getHo
   function readForm(): { name: string; def: McpServerDef } {
     const name = $<HTMLInputElement>("mcp-name").value.trim();
     const prev = servers.find((s) => s.name === editing)?.def;
-    const base: McpServerDef = { bots: readBots(), enabled: prev?.enabled ?? true };
+    const base: McpServerDef = { bots: readBots(), enabled: prev?.enabled ?? true, trusted: $<HTMLInputElement>("mcp-trusted").checked };
     if (kind === "url") {
       const headers = readKv("mcp-headers");
       return { name, def: { ...base, url: $<HTMLInputElement>("mcp-url").value.trim(), ...(Object.keys(headers).length ? { headers } : {}) } };
@@ -383,6 +395,7 @@ export function createConnectors(api: SlopbotApi, getBots: () => string[], getHo
     addEnv = kvRows("mcp-env", def.env, "NAME (e.g. API_KEY)");
     addHeader = kvRows("mcp-headers", def.headers, "Header (e.g. Authorization)");
     formBots(def.bots ?? ["*"]);
+    $<HTMLInputElement>("mcp-trusted").checked = def.trusted === true;
     setKind(def.url ? "url" : "command");
     $("mcp-note").textContent = note;
     $("mcp-note").hidden = !note;

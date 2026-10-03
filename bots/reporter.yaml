@@ -15,6 +15,10 @@ tools:
   - "fs.read"
   - "email.draft"
   - "email.send"
+# Sites this bot may read without asking. Anything else asks you first (or waits in Approvals
+# when the bot runs on a schedule). Subdomains are included.
+network:
+  allow: [news.ycombinator.com, lobste.rs, wikipedia.org]
 schedules:
   - name: morning-digest
     cron: "30 7 * * *"         # every day 07:30

@@ -1,14 +1,14 @@
 {
   "name": "slopbot",
   "version": "0.1.0",
-  "description": "Open-source, self-hostable personal AI agents. Bring your own model or run fully local.",
+  "description": "Open-source personal AI agents that run on your own computer. Bring your own model or run fully local.",
   "license": "MIT",
   "type": "module",
   "bin": {
     "slopbot": "dist/cli.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12"
   },
   "scripts": {
     "slopbot": "tsx src/cli.ts",
@@ -18,19 +18,23 @@
     "test": "tsx --import ./test/setup.ts --test test/*.test.ts",
     "desktop:build": "node desktop/build.mjs",
     "desktop": "node desktop/build.mjs && electron .",
-    "desktop:preview": "node desktop/build.mjs && npx --yes http-server dist-desktop/renderer -p 5199 -c-1",
-    "desktop:dist": "node desktop/build.mjs && electron-builder",
-    "desktop:dist:mac": "node desktop/build.mjs && electron-builder --mac",
-    "desktop:dist:win": "node desktop/build.mjs && electron-builder --win",
-    "desktop:dist:linux": "node desktop/build.mjs && electron-builder --linux",
+    "desktop:preview": "node desktop/build.mjs && npx --yes http-server dist-desktop/renderer -a 127.0.0.1 -p 5199 -c-1",
+    "desktop:dist": "node desktop/build.mjs && node desktop/dist.mjs",
+    "desktop:dist:mac": "node desktop/build.mjs && node desktop/dist.mjs --mac",
+    "desktop:dist:win": "node desktop/build.mjs && electron-builder --win --x64 --publish never",
+    "desktop:dist:linux": "node desktop/build.mjs && electron-builder --linux --x64 --publish never",
     "branding": "node assets/branding/generate.mjs",
-    "desktop:dist:win:zip": "node desktop/build.mjs && electron-builder --win zip --x64"
+    "desktop:dist:win:zip": "node desktop/build.mjs && electron-builder --win zip --x64 --publish never",
+    "desktop:dist:mac:ci": "node desktop/build.mjs && node desktop/dist.mjs --mac --x64 --arm64",
+    "desktop:dist:win:ci": "node desktop/build.mjs && electron-builder --win --x64 --publish never",
+    "desktop:dist:linux:ci": "node desktop/build.mjs && electron-builder --linux --x64 --publish never"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.31.0",
     "croner": "^10.0.1",
     "nodemailer": "^10.0.13",
     "three": "^0.186.1",
+    "undici": "^7.30.0",
     "yaml": "^2.9.1",
     "zod": "^4.6.5"
   },
@@ -40,8 +44,8 @@
     "@types/node": "^20.19.43",
     "@types/nodemailer": "^8.0.2",
     "@types/three": "^0.186.0",
-    "electron": "^41.7.1",
-    "electron-builder": "^26.15.3",
+    "electron": "^44.5.1",
+    "electron-builder": "^26.17.0",
     "esbuild": "^0.28.2",
     "sharp": "^0.35.5",
     "tsx": "^4.23.15",
@@ -49,7 +53,9 @@
   },
   "main": "dist-desktop/main.cjs",
   "productName": "SlopBot",
-  "author": "SlopBot contributors",
+  "author": {
+    "name": "SlopBot contributors"
+  },
   "build": {
     "appId": "dev.slopbot.app",
     "productName": "SlopBot",
@@ -74,38 +80,58 @@
         "to": "seed/slopbot.config.example.yaml"
       }
     ],
+    "afterPack": "desktop/after-pack.cjs",
     "mac": {
       "target": [
-        "dmg",
-        "zip"
+        "dmg"
       ],
       "category": "public.app-category.productivity",
-      "icon": "assets/branding/generated/icon.icns"
+      "icon": "assets/branding/generated/icon.icns",
+      "artifactName": "${productName}-${version}-mac-${arch}.${ext}"
+    },
+    "dmg": {
+      "title": "SlopBot ${version}"
     },
     "win": {
       "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "x64"
-          ]
-        }
+        "nsis",
+        "zip"
       ],
-      "icon": "assets/branding/generated/icon.ico"
+      "icon": "assets/branding/generated/icon.ico",
+      "artifactName": "${productName}-${version}-windows-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "artifactName": "${productName}-${version}-windows-${arch}-setup.${ext}"
     },
     "linux": {
       "target": [
-        "AppImage"
+        "AppImage",
+        "deb"
       ],
       "category": "Utility",
-      "icon": "assets/branding/generated/icon-512.png"
+      "icon": "assets/branding/generated/icon-512.png",
+      "executableName": "slopbot",
+      "synopsis": "Personal AI agents that run on your own computer",
+      "maintainer": "SlopBot contributors",
+      "artifactName": "${productName}-${version}-linux-${arch}.${ext}"
+    },
+    "appImage": {
+      "artifactName": "${productName}-${version}-linux-x86_64.${ext}"
+    },
+    "deb": {
+      "artifactName": "${productName}-${version}-linux-amd64.${ext}"
     }
+  },
+  "homepage": "https://github.com/CameronWDavis/SlopBot",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CameronWDavis/SlopBot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/CameronWDavis/SlopBot/issues"
   }
 }

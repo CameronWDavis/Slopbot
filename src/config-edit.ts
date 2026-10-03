@@ -8,7 +8,7 @@ function editYaml(file: string, fn: (doc: YAML.Document) => void) {
   const doc = YAML.parseDocument(fs.readFileSync(file, "utf8"));
   fn(doc);
   const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, doc.toString());
+  fs.writeFileSync(tmp, doc.toString(), { mode: 0o600 }); // config may hold settings worth keeping private
   fs.renameSync(tmp, file);
 }
 
@@ -17,7 +17,7 @@ export function ensureConfigFile(rootDir: string): string {
   const file = path.join(rootDir, CONFIG_FILE);
   if (!fs.existsSync(file)) {
     const example = path.join(rootDir, "slopbot.config.example.yaml");
-    fs.writeFileSync(file, fs.existsSync(example) ? fs.readFileSync(example, "utf8") : "providers: {}\n");
+    fs.writeFileSync(file, fs.existsSync(example) ? fs.readFileSync(example, "utf8") : "providers: {}\n", { mode: 0o600 });
   }
   return file;
 }

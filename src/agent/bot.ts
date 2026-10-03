@@ -24,6 +24,8 @@ export interface BotDef {
   temperature?: number;
   /** Max tools offered to the model per step; extra connector tools are found via tools.find. */
   maxTools?: number;
+  /** Sites this bot may fetch without asking (domain or subdomain match). */
+  network?: { allow: string[] };
   permissions: PolicyRule[];
   schedules: Schedule[];
   file: string;
@@ -47,6 +49,7 @@ export function parseBot(file: string): BotDef {
     maxSteps: raw.maxSteps ?? 20,
     temperature: raw.temperature,
     maxTools: typeof raw.maxTools === "number" ? raw.maxTools : undefined,
+    network: { allow: Array.isArray(raw.network?.allow) ? raw.network.allow.map(String) : [] },
     permissions: raw.permissions ?? [],
     schedules: (raw.schedules ?? []).map((s: any, i: number) => ({
       name: s.name ?? `schedule-${i + 1}`,

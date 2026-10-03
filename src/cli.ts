@@ -84,7 +84,7 @@ const LONG_RUNNING = new Set(["daemon", "mcp"]);
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   const config = loadConfig();
-  const store = new Store(config.dataDir);
+  const store = new Store(config.dataDir, { retentionDays: config.retentionDays });
   const mcp = (mcpManager = new McpManager(config));
 
   switch (cmd) {

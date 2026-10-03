@@ -1124,6 +1124,13 @@ input.has-secret::placeholder {
   gap: 6px;
   font-size: 14px;
 }
+.trust-check {
+  margin-top: 14px;
+  align-items: flex-start;
+}
+.trust-check em {
+  font-style: normal;
+}
 .check input {
   accent-color: var(--olive-ink);
   width: 16px;

@@ -1,0 +1,133 @@
+name: Release
+
+# Build installers for macOS, Windows and Linux and publish them as a GitHub Release.
+#
+#   git tag v0.2.0 && git push origin v0.2.0      → builds and publishes "SlopBot v0.2.0"
+#   Actions tab → Release → Run workflow          → same, for a tag you type in
+#
+# Tags with a hyphen (v0.2.0-beta.1) are published as pre-releases.
+#
+# Code signing is optional. Without these repository secrets the apps are unsigned: macOS shows
+# an "unidentified developer" prompt (the app is ad-hoc signed so it doesn't look "damaged") and
+# Windows shows SmartScreen. Add the secrets and signing/notarization happens automatically:
+#   macOS:   MAC_CSC_LINK (base64 .p12 of a Developer ID Application cert), MAC_CSC_KEY_PASSWORD,
+#            APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID   (notarization)
+#   Windows: WIN_CSC_LINK (base64 .pfx), WIN_CSC_KEY_PASSWORD
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to build and release (e.g. v0.2.0)"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+            script: desktop:dist:mac:ci
+          - name: Windows
+            os: windows-latest
+            script: desktop:dist:win:ci
+          - name: Linux
+            os: ubuntu-latest
+            script: desktop:dist:linux:ci
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Use the tag as the app version
+        shell: bash
+        run: |
+          case "$TAG" in v[0-9]*) ;; *) echo "::error::Tag must look like v1.2.3 (got '$TAG')"; exit 1 ;; esac
+          npm version "${TAG#v}" --no-git-tag-version --allow-same-version
+
+      - name: Build installers
+        shell: bash
+        env:
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          # Only pass signing settings that are actually configured (empty values confuse electron-builder).
+          if [ -n "$MAC_CSC_LINK" ]; then export CSC_LINK="$MAC_CSC_LINK" CSC_KEY_PASSWORD="$MAC_CSC_KEY_PASSWORD"; fi
+          for v in MAC_CSC_LINK MAC_CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID WIN_CSC_LINK WIN_CSC_KEY_PASSWORD; do
+            if [ -z "${!v}" ]; then unset "$v"; fi
+          done
+          if [ -z "$CSC_LINK" ] && [ -z "$WIN_CSC_LINK" ]; then export CSC_IDENTITY_AUTO_DISCOVERY=false; fi
+          npm run ${{ matrix.script }}
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.name }}
+          if-no-files-found: error
+          path: |
+            release/*.dmg
+            release/*.exe
+            release/*.zip
+            release/*.AppImage
+            release/*.deb
+
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          ls -la
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Release notes
+        run: sed "s/{{VERSION}}/${TAG#v}/g; s/{{TAG}}/$TAG/g" .github/release-notes.md > notes.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: SlopBot ${{ env.TAG }}
+          body_path: notes.md
+          generate_release_notes: true
+          prerelease: ${{ contains(env.TAG, '-') }}
+          files: dist/*

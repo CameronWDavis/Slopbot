@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
+import { minimalEnv, sandboxed } from "./shellguard.js";
 import { obj, safePath, type Tool } from "./types.js";
 
 const MAX_OUTPUT = 64_000;
@@ -31,8 +32,10 @@ export const shellTools: Tool[] = [
       const dir = safePath(ctx, cwd);
       const timeout = Math.min(Math.max(timeout_sec, 1), 900) * 1000;
       return new Promise((resolve) => {
-        const sh = shellCommand(command);
-        const child = spawn(sh.file, sh.args, { cwd: dir, env: { ...process.env, CI: "1" }, windowsHide: true });
+        // Approved commands still run boxed in: no API keys in the environment, and (macOS / Linux
+        // with bwrap) no writes outside the bot's folders and no reads of credentials. See shellguard.ts.
+        const sh = sandboxed(shellCommand(command), { roots: ctx.roots, dataDir: ctx.config.dataDir, rootDir: ctx.config.rootDir }, { enabled: ctx.config.shellSandbox !== false });
+        const child = spawn(sh.file, sh.args, { cwd: dir, env: minimalEnv(), windowsHide: true });
         let out = "";
         const add = (b: Buffer) => {
           if (out.length < MAX_OUTPUT) out += b.toString();

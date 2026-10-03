@@ -37,6 +37,17 @@ providers:
 # connector tools + a tools.find tool to discover the rest. Bots can override with `maxTools:`.
 maxTools: auto
 
+# Approved shell.run commands run boxed in: API keys from .env / your environment are removed,
+# and on macOS (and Linux with bubblewrap installed) they can only write inside the bot's
+# folders, temp and package caches, and can't read SSH/cloud/browser credentials, the Keychain
+# or SlopBot's data. Set to false only if a tool you trust needs more.
+shellSandbox: true
+
+# How long to keep saved conversations, the activity log and resolved approvals (in data/).
+# Older entries are deleted at startup. 0 = keep everything. Known key formats are scrubbed
+# from these files either way.
+retentionDays: 30
+
 # Outgoing email (for email.send and scheduled reports).
 # Gmail: host smtp.gmail.com, port 465, and an App Password (not your real password).
 # smtp:
@@ -46,6 +57,16 @@ maxTools: auto
 #   pass: ${SMTP_PASS}
 #   from: "SlopBot <${SMTP_USER}>"
 #   to: ${SMTP_USER}          # default recipient ("me")
+
+# What bots may reach with http.fetch.
+#   allow:        sites any bot may read without asking (bots can add their own under `network:`).
+#                 Everything else asks you first, or waits in Approvals for background runs.
+#   allowPrivate: local / home-network services bots may reach at all ("host" or "host:port").
+#                 Loopback, LAN and cloud-metadata addresses are blocked unless listed here.
+network:
+  allow: []
+  allowPrivate: []
+  # allowPrivate: ["127.0.0.1:8080", "nas.local"]
 
 # Global Custom Rules, checked after each bot's own `permissions`. First match wins.
 # action: allow | ask | deny

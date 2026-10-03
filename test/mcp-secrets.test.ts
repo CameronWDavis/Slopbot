@@ -11,7 +11,9 @@ import { FileSecrets, looksSecret } from "../src/secrets.js";
 
 process.env.SLOPBOT_SECRETS = "file";
 const root = path.join(import.meta.dirname, "..");
-const TSX = path.join(root, "node_modules/.bin/tsx");
+// Run the fixture with this Node + tsx's CLI (node_modules/.bin/tsx is a .cmd shim on Windows).
+const NODE = process.execPath;
+const TSX_CLI = path.join(root, "node_modules/tsx/dist/cli.mjs");
 const FIXTURE = path.join(root, "test/fixtures/echo-mcp.ts");
 const managers: McpManager[] = [];
 after(() => Promise.all(managers.map((m) => m.closeAll())));
@@ -54,8 +56,8 @@ test("saving moves keys out of the config file and connecting still works", asyn
   const { make, file, secrets } = setup();
   const mcp = make();
   await mcp.saveServer("echo", {
-    command: TSX,
-    args: [FIXTURE, "--api-key", "sk-live-abcdef123456", "--token=ghp_zzzzzzzzzzzz9", "--verbose"],
+    command: NODE,
+    args: [TSX_CLI, FIXTURE, "--api-key", "sk-live-abcdef123456", "--token=ghp_zzzzzzzzzzzz9", "--verbose"],
     env: { ECHO_TOKEN: "ghp_realtoken123456", LOG_LEVEL: "debug" },
     bots: ["*"],
   });
@@ -64,7 +66,7 @@ test("saving moves keys out of the config file and connecting still works", asyn
   const saved = JSON.parse(text).mcpServers.echo;
   assert.equal(saved.env.ECHO_TOKEN, "${secret:mcp.echo.env.ECHO_TOKEN}");
   assert.equal(saved.env.LOG_LEVEL, "debug", "non-secrets stay readable");
-  assert.deepEqual(saved.args.slice(1), ["--api-key", "${secret:mcp.echo.arg.2}", "--token=${secret:mcp.echo.arg.3}", "--verbose"]);
+  assert.deepEqual(saved.args.slice(2), ["--api-key", "${secret:mcp.echo.arg.3}", "--token=${secret:mcp.echo.arg.4}", "--verbose"]);
   assert.equal(secrets.get("mcp.echo.env.ECHO_TOKEN"), "ghp_realtoken123456");
 
   const { tools } = await mcp.toolsForBot("x");
@@ -82,6 +84,18 @@ test("headers and URL query keys are secured too", async () => {
   assert.equal(saved.headers.Authorization, "${secret:mcp.remote.header.Authorization}");
   assert.equal(saved.headers.Accept, "application/json");
   assert.equal(secrets.get("mcp.remote.url.api_key"), "abc123secret");
+});
+
+test("a username:password in a connector URL becomes a stored Basic auth header", async () => {
+  const { make, file, secrets } = setup();
+  await make().saveServer("intranet", { url: "https://alice:s3cr3t-pass@mcp.example.com/mcp?region=eu", bots: ["*"] });
+  const text = fs.readFileSync(file, "utf8");
+  assert.ok(!text.includes("s3cr3t-pass") && !text.includes("alice"), "credentials gone from the file");
+  const saved = JSON.parse(text).mcpServers.intranet;
+  assert.equal(saved.url, "https://mcp.example.com/mcp?region=eu");
+  assert.equal(saved.headers.Authorization, "${secret:mcp.intranet.header.Authorization}");
+  assert.equal(secrets.get("mcp.intranet.header.Authorization"), `Basic ${Buffer.from("alice:s3cr3t-pass").toString("base64")}`);
+  if (process.platform !== "win32") assert.equal(fs.statSync(file).mode & 0o777, 0o600, "config file is private");
 });
 
 test("editing keeps stored keys, rename moves them, remove deletes them", async () => {
@@ -123,7 +137,7 @@ test("plaintext keys in an existing file are migrated on startup", async () => {
 test("a missing secret gives a clear error instead of a confusing auth failure", async () => {
   const { make, secrets } = setup();
   const mcp = make();
-  await mcp.saveServer("echo", { command: TSX, args: [FIXTURE], env: { ECHO_TOKEN: "ghp_willvanish123" }, bots: ["*"] });
+  await mcp.saveServer("echo", { command: NODE, args: [TSX_CLI, FIXTURE], env: { ECHO_TOKEN: "ghp_willvanish123" }, bots: ["*"] });
   secrets.delete("mcp.echo.env.ECHO_TOKEN");
   await assert.rejects(mcp.connect("echo"), /Secret "mcp\.echo\.env\.ECHO_TOKEN" isn't in your/);
 });

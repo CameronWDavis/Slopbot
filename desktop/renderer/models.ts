@@ -114,8 +114,12 @@ export function createModels(api: SlopbotApi, hooks: ModelsHooks) {
     try {
       await api.ollamaPull(model);
       hooks.onWork("done");
-      // First local model? Make it the default so bots use it right away.
-      if (st && !st.defaultModel.startsWith(`${st.provider}/`)) {
+      // If the default model isn't a local model you actually have, make this one the default
+      // so bots work right away (a fresh install defaults to qwen3:8b, which may not be downloaded).
+      const fresh = await api.ollamaStatus();
+      const prefix = `${fresh.provider}/`;
+      const current = fresh.defaultModel.startsWith(prefix) ? fresh.defaultModel.slice(prefix.length) : "";
+      if (!current || !fresh.models.some((m) => m.name === current)) {
         await api.ollamaSetDefault(model);
         hooks.onConfigChanged();
       }

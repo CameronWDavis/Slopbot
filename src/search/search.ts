@@ -25,7 +25,7 @@ export interface SearchResult {
 
 export const searchKeyName = (p: SearchProvider) => `search.${p}`;
 
-const UA = "SlopBot/0.1 (+https://github.com/slopbot)";
+const UA = "SlopBot/0.1 (+https://github.com/CameronWDavis/SlopBot)";
 const stripHtml = (s: string) =>
   String(s ?? "")
     .replace(/<[^>]+>/g, "")

@@ -33,6 +33,11 @@ export interface McpServerDef {
   bots?: string[]; // bot names, or ["*"]
   enabled?: boolean;
   description?: string;
+  /**
+   * Whether to believe this server's "read-only" tool labels. MCP annotations are hints the server
+   * controls, so for untrusted servers every non-destructive tool asks first. Set by the user.
+   */
+  trusted?: boolean;
 }
 
 export interface McpToolInfo {
@@ -40,6 +45,8 @@ export interface McpToolInfo {
   slopName: string; // mcp.<server>.<tool>
   description: string;
   risk: Risk;
+  /** The server labels this tool read-only, but the server isn't trusted, so it still asks. */
+  claimsReadOnly?: boolean;
 }
 
 export interface McpServerStatus {
@@ -72,9 +79,11 @@ export function slopToolName(server: string, tool: string): string {
 }
 
 /** Map MCP tool annotations onto SlopBot risk levels (so the policy engine knows what needs approval). */
-export function riskFromAnnotations(a: { readOnlyHint?: boolean; destructiveHint?: boolean } | undefined): Risk {
-  if (a?.readOnlyHint) return "read";
-  if (a?.destructiveHint) return "dangerous";
+export function riskFromAnnotations(a: { readOnlyHint?: boolean; destructiveHint?: boolean } | undefined, trusted = false): Risk {
+  // A destructive label is never downgraded, whatever else the server claims.
+  if (a?.destructiveHint === true) return "dangerous";
+  // "Read-only" is only believed for servers the user has chosen to trust.
+  if (a?.readOnlyHint === true && trusted) return "read";
   return "external";
 }
 
@@ -150,7 +159,7 @@ export class McpManager {
 
   private writeServers(servers: Record<string, McpServerDef>) {
     const tmp = `${this.file}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify({ mcpServers: servers }, null, 2) + "\n");
+    fs.writeFileSync(tmp, JSON.stringify({ mcpServers: servers }, null, 2) + "\n", { mode: 0o600 }); // private to this user
     fs.renameSync(tmp, this.file);
   }
 
@@ -228,13 +237,21 @@ export class McpManager {
         try {
           const u = new URL(def.url);
           let changed = false;
+          // user:password@ in a URL: fetch refuses it anyway, so turn it into a Basic auth header
+          // (stored in the secret store like any other header) and drop it from the URL.
+          if (u.username || u.password) {
+            const basic = Buffer.from(`${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}`).toString("base64");
+            const hasAuth = Object.keys(out.headers ?? {}).some((h) => h.toLowerCase() === "authorization");
+            if (!hasAuth) out.headers = { ...(out.headers ?? {}), Authorization: store("header.Authorization", `Basic ${basic}`) };
+            changed = true;
+          }
           const query = [...u.searchParams].map(([k, v]) => {
             const enc = encodeURIComponent(k);
             if (!looksSecret(k, v)) return `${enc}=${encodeURIComponent(v)}`;
             changed = true;
             return `${enc}=${store(`url.${k}`, v)}`;
           });
-          if (changed) out.url = `${u.origin}${u.pathname}?${query.join("&")}${u.hash}`;
+          if (changed) out.url = `${u.protocol}//${u.host}${u.pathname}${query.length ? `?${query.join("&")}` : ""}${u.hash}`;
         } catch {
           /* not a URL we can parse; leave it */
         }
@@ -291,6 +308,7 @@ export class McpManager {
       const def: McpServerDef = { ...raw, url: raw.url ?? (raw as any).serverUrl, bots: raw.bots ?? bots, enabled: raw.enabled ?? true };
       delete (def as any).serverUrl;
       delete (def as any).type;
+      delete def.trusted; // pasted JSON can't vouch for itself; only the user can mark a server trusted
       await this.saveServer(name, def);
       names.push(name);
     }
@@ -384,7 +402,8 @@ export class McpManager {
           name: t.name,
           slopName: slopToolName(name, t.name),
           description: (t.description ?? t.title ?? t.name).slice(0, 1000),
-          risk: riskFromAnnotations(t.annotations),
+          risk: riskFromAnnotations(t.annotations, def.trusted === true),
+          claimsReadOnly: t.annotations?.readOnlyHint === true && t.annotations?.destructiveHint !== true && def.trusted !== true ? true : undefined,
           schema: { type: "object", properties: {}, ...(t.inputSchema as object) },
         });
       }

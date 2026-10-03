@@ -106,7 +106,7 @@ export class SlopOAuthProvider implements OAuthClientProvider {
   get clientMetadata(): OAuthClientMetadata {
     return {
       client_name: "SlopBot",
-      client_uri: "https://github.com/slopbot",
+      client_uri: "https://github.com/CameronWDavis/SlopBot",
       redirect_uris: [OAUTH_REDIRECT],
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
