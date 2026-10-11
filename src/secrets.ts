@@ -307,8 +307,19 @@ const SCRUB_PATTERNS: [RegExp, string][] = [
   [/("(?:password|passwd|secret|api_?key|apikey|token|access_token|refresh_token|client_secret|private_key)"\s*:\s*")[^"]{4,}"/gi, '$1[redacted]"'],
 ];
 
+function luhnValid(digits: string): boolean {
+  let sum = 0;
+  for (let i = 0; i < digits.length; i++) {
+    let d = Number(digits[digits.length - 1 - i]);
+    if (i % 2) d = d * 2 > 9 ? d * 2 - 9 : d * 2;
+    sum += d;
+  }
+  return sum % 10 === 0;
+}
+
 export function scrubSecrets(text: string): string {
   let out = text;
   for (const [re, rep] of SCRUB_PATTERNS) out = out.replace(re, rep);
-  return out;
+  // Payment card numbers (checked with the Luhn digit so order numbers survive).
+  return out.replace(/\b(?:\d[ -]?){13,19}\b/g, (m) => (luhnValid(m.replace(/\D/g, "")) ? "[card number]" : m));
 }

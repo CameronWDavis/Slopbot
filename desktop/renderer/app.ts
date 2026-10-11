@@ -7,6 +7,9 @@ import { createConnectors } from "./connectors.js";
 import { createModels } from "./models.js";
 import { createSearchCard, createVault } from "./vault-ui.js";
 import { createChannels } from "./channels-ui.js";
+import { createSkills } from "./skills-ui.js";
+import { createShopping } from "./shopping-ui.js";
+import { createSources } from "./sources-ui.js";
 
 declare global {
   interface Window {
@@ -53,6 +56,16 @@ const models_ = createModels(api, {
 });
 
 const vault = createVault(api, () => bots.map((b) => b.name));
+const skills = createSkills(api, () => bots.map((b) => b.name));
+const shopping = createShopping(api);
+const sources = createSources(api, {
+  watchFeed: (f) => {
+    showView("shopping");
+    shopping.openForm(undefined, { kind: "feed", url: f.url, name: f.label });
+  },
+});
+void shopping.load(); // sidebar badge for deals waiting
+api.onShowShopping(() => showView("shopping"));
 const searchCard = createSearchCard(api);
 const channels = createChannels(api, () => bots.map((b) => b.name));
 
@@ -182,7 +195,10 @@ async function selectBot(name: string) {
 
 function showView(view: string) {
   document.querySelectorAll<HTMLButtonElement>(".view-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
-  for (const v of ["chat", "approvals", "activity", "memory", "models", "vault", "channels", "connectors"]) $(`view-${v}`).hidden = v !== view;
+  for (const v of ["chat", "approvals", "activity", "memory", "models", "skills", "shopping", "sources", "vault", "channels", "connectors"]) $(`view-${v}`).hidden = v !== view;
+  if (view === "sources") sources.load();
+  if (view === "skills") skills.load();
+  if (view === "shopping") shopping.load();
   if (view === "channels") channels.load();
   if (view === "vault") vault.load();
   if (view === "connectors") searchCard.load();

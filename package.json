@@ -15,6 +15,7 @@
     "dev": "tsx src/cli.ts",
     "build": "tsc -p .",
     "typecheck": "tsc -p . --noEmit && tsc -p tsconfig.desktop.json",
+    "privacy:scan": "node scripts/privacy-scan.mjs",
     "test": "tsx --import ./test/setup.ts --test test/*.test.ts",
     "desktop:build": "node desktop/build.mjs",
     "desktop": "node desktop/build.mjs && electron .",
@@ -74,6 +75,10 @@
       {
         "from": "examples",
         "to": "seed/examples"
+      },
+      {
+        "from": "skills",
+        "to": "seed/skills"
       },
       {
         "from": "slopbot.config.example.yaml",

@@ -26,6 +26,8 @@ export interface BotDef {
   maxTools?: number;
   /** Sites this bot may fetch without asking (domain or subdomain match). */
   network?: { allow: string[] };
+  /** Skills from the library this bot uses (in addition to ones assigned in the app). "*" = all. */
+  skills?: string[];
   permissions: PolicyRule[];
   schedules: Schedule[];
   file: string;
@@ -50,6 +52,7 @@ export function parseBot(file: string): BotDef {
     temperature: raw.temperature,
     maxTools: typeof raw.maxTools === "number" ? raw.maxTools : undefined,
     network: { allow: Array.isArray(raw.network?.allow) ? raw.network.allow.map(String) : [] },
+    skills: Array.isArray(raw.skills) ? raw.skills.map(String) : [],
     permissions: raw.permissions ?? [],
     schedules: (raw.schedules ?? []).map((s: any, i: number) => ({
       name: s.name ?? `schedule-${i + 1}`,

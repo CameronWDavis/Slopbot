@@ -76,7 +76,8 @@ export class Store {
     };
     fix(this.dataDir, 0o700);
     for (const f of ["audit.jsonl", "approvals.json"]) fix(this.p(f), 0o600);
-    for (const dir of ["sessions", "memory", "channels"]) {
+    for (const f of ["scheduler.lock"]) fix(this.p(f), 0o600);
+    for (const dir of ["sessions", "memory", "channels", "workspaces", "shopping", "skills"]) {
       const walk = (d: string) => {
         let entries: fs.Dirent[] = [];
         try {

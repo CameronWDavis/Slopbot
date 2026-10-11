@@ -32,6 +32,8 @@ Everything stays on your machine. **Nothing a bot does that matters happens with
 - [Tools](#tools)
 - [Approvals & permissions](#approvals--permissions)
 - [Models](#models)
+- [Skills](#skills)
+- [Shopping & deal watching](#shopping--deal-watching)
 - [Connectors (MCP)](#connectors-mcp)
 - [Vault](#vault)
 - [Web search](#web-search)
@@ -149,6 +151,7 @@ Bots are YAML files in the `bots/` folder. Three come with SlopBot:
 | **ledger** | Imports bank/credit-card CSVs, categorizes spending, answers money questions, sends a weekly report. |
 | **coder** | Reads, edits and tests code in folders you allow. Every shell command asks first. |
 | **reporter** | Searches and reads the web, writes digests, emails or messages you a summary. |
+| **shopper** | Checks out the deals you approve in the shopping browser (see [Shopping](#shopping--deal-watching)). Outside a purchase you approved it can only read pages. |
 
 Make your own: save a file like `bots/gymbro.yaml` and restart the app.
 
@@ -161,6 +164,7 @@ persona: |
 tools: ["fs.*", "memory.*", "web.search", "email.send"]   # globs over tool names
 workspace: ./data/workspaces/gymbro   # optional sandbox folder (this is the default)
 allowedPaths: [~/Documents/Workouts]  # extra folders it may read/write
+skills: [weekly-money-report]      # optional; skills from skills/ (or assign them in the Skills tab)
 maxSteps: 20                       # max tool-using steps per request
 maxTools: 20                       # optional; see "Models"
 temperature: 0.4                   # optional
@@ -185,6 +189,7 @@ Bots can also use any [connector](#connectors-mcp) tool you share with them; tho
 | `shell.run` | Run a command (bash on macOS/Linux, PowerShell on Windows) | **asks** |
 | `http.fetch` | Read a web page or call an API, optionally with a vault credential | runs for sites on the bot's `network.allow` list; **asks** for other sites, credentials or changes; local-network addresses blocked |
 | `web.search` | Search the web | runs |
+| `browser.open`, `browser.read`, `browser.click`, `browser.type` | Drive the shopping browser (desktop app) | reading runs; opening an unknown site asks; clicking and typing only during a purchase you approved, checked by code |
 | `vault.list` | See which credentials it may use (never the secrets) | runs |
 | `memory.remember`, `memory.recall`, `memory.forget` | Long-term memory about you | runs |
 | `email.draft` | Save an email draft | runs |
@@ -210,12 +215,84 @@ Everything is written to an audit log: the **Activity** tab, or `slopbot activit
 
 ## Models
 
-- **Local:** the **Models** tab manages Ollama for you. From a terminal: `npm run slopbot models` and `npm run slopbot pull qwen3:8b --default`. LM Studio, vLLM and llama.cpp work too; add them as `type: openai` providers.
+- **Local:** the **Models** tab manages Ollama for you. From a terminal: `npm run slopbot models` and `npm run slopbot -- pull qwen3:8b --default`. LM Studio, vLLM and llama.cpp work too; add them as `type: openai` providers.
 - **Hosted:** any OpenAI-compatible API (`type: openai` with a `baseUrl`) or Anthropic (`type: anthropic`).
 - **Per bot or per chat:** set `model:` in a bot's YAML, use **Models → Use for bot…**, or pick from the dropdown under the message box.
 - **Small models and many tools:** when a bot has more tools than its budget (`maxTools`, auto = 20 for local models and 64 for hosted ones), it sees its own tools plus the connector tools most relevant to your request, and can call `tools.find` to discover the rest.
 
 Model IDs are written `provider/model`, for example `ollama/qwen3:8b`, `openai/gpt-5`, `anthropic/claude-sonnet-5-5`, `openrouter/meta-llama/llama-3.1-70b-instruct`.
+
+## Skills
+
+A **skill** teaches a bot how you like something done: a report format, your email tone, the steps for a recurring chore. It uses the same `SKILL.md` format as Claude and Codex skills, so skill folders you find online work here too.
+
+```markdown
+---
+name: weekly-money-report
+description: Use when writing a weekly money report. Defines the sections, order, length and tone.
+---
+
+1. Call finance.summary for the last 7 days.
+2. Lead with total spent, income and the net …
+```
+
+- **Add one:** open the **Skills** tab and click **+ New skill** to write one, or **Add from folder…** to pick a skill folder (or its `SKILL.md`). Then choose which bots use it. From a terminal: `npm run slopbot -- skills add <folder> --bots ledger,reporter` (the `--` stops npm from swallowing `--bots`).
+- **How bots use them:** a bot sees only each skill's name and description. When a task matches, it calls `skills.read` to load the instructions, plus any templates or reference files in the folder. This keeps the prompt small, which matters for local models.
+- **Where they live:** the skills that ship with SlopBot are read-only. Skills you write or import are private: they're saved in your app data folder (`data/skills/`), never in the project folder or a build. Editing a built-in skill saves your own copy that replaces it. Which bots use which skill is saved in `data/skills.json`; a bot's YAML can also list them under `skills:`.
+- **Safety:** skills are instructions, not permissions. Everything a skill asks for still goes through your approvals and the sandbox. Skill files are read-only to bots, and links pointing outside the folder are refused. Scripts in a skill only run through `shell.run`, which asks first. Only add skills from people you trust.
+
+SlopBot ships one example, `weekly-money-report`, which the **ledger** bot uses for its Monday report.
+
+## Shopping & deal watching
+
+Tell SlopBot what you want and what you'll pay. It watches product pages, deal feeds and (with your own token) X, checks the real store listing, and asks you. Nothing is bought without your **Buy**.
+
+**How a deal goes:**
+
+1. **Watch.** A product page, an RSS/Atom feed (r/buildapcsales, Slickdeals, …), an X account or an X search.
+2. **Match.** Your keywords, words to skip, **exact variant** (e.g. `RTX 4070 SUPER`, `12GB`, a model number), **acceptable sellers**, a **target price** and its **currency**.
+3. **Verify.** SlopBot opens the store listing the post points to and reads the item, seller, price, currency and stock itself. Posts that don't hold up at the store are dropped. The same product seen in several places becomes one deal.
+4. **Ask.** You get an alert in the app and on Telegram (link it in Channels) showing the exact item, seller, quantity (always 1), price and currency, and the **maximum total including tax and shipping**, with **Buy / Skip / Open deal**.
+5. **Buy.** Your Buy covers that exact quote and cap, and expires after 30 minutes (adjustable). Right before checkout SlopBot re-reads the listing. If the price went up, the seller changed, the item changed or it sold out, it asks you again instead of buying.
+6. **Checkout.** The **shopper** bot checks out in the **shopping browser** with the address and payment saved in your store account.
+7. **Receipt.** It only counts as **confirmed** when SlopBot sees an order confirmation with an order number. If an order might have gone through without one, the deal is marked **check your account**. SlopBot never retries that by itself.
+
+Auto-buy is not part of this version.
+
+**Set up (Deal sources tab):**
+
+- **Shopping browser:** sign in to the stores you use and keep your address and card saved in each store account, never in SlopBot. **Remove saved sign-ins** signs it out of everything.
+- **Feeds:** save the RSS/Atom feeds you like (subreddits have one at `reddit.com/r/NAME/new/.rss`).
+- **X (optional):** paste your own X API bearer token. It's stored in your system keychain and shown masked, and you get **Test connection**, its status, and **Remove**. Your X developer plan must include reading posts. Set a monthly read limit to match it: X watches check at most every 15 minutes and read up to 10 posts per check.
+- **Page-rendering service (optional):** for stores that can't be read directly or with the shopping browser, add your own ScrapingBee or ScraperAPI key. That service sees the product addresses you watch, never your sign-ins.
+
+**Limits enforced in code, not by the AI:**
+
+- Outside a purchase you approved, the shopper can only open and read pages. **No clicks, no typing, no form submissions.**
+- During one, every click, typing and Enter goes through a single check, using what SlopBot reads from the page itself:
+  - the page must be on the approved store;
+  - on any cart or checkout page, the order total must be readable, in the approved currency and within the cap;
+  - the cart must hold exactly the approved item, quantity 1;
+  - an action can't be repeated on an unchanged page, so nothing is submitted twice.
+- Anything unknown or ambiguous stops the purchase: an unreadable total, two different totals, an unclear price format, another currency, a different site.
+- Navigating to another site during checkout pauses the purchase for you.
+- Bots never type passwords, card numbers, security or one-time codes, and never try to get past CAPTCHAs. Sign-ins, codes and payment re-entry **pause** the purchase. You do that step in the shopping browser, then tap **Resume**.
+- Prices are exact (whole cents in a named currency). `€1.234,56` is read as one thousand two hundred thirty-four euros, and an ambiguous `$1.234` is refused rather than guessed.
+- If SlopBot is closed mid-checkout, it never resumes or repeats a purchase on restart. Anything that might have been ordered is marked **check your account**.
+
+**Privacy:**
+
+- The model only gets a short summary of each page with names, addresses, phone numbers, emails and card details removed. On cart and checkout pages it gets only the lines about the item and the money.
+- With a **local** model (Ollama) nothing leaves your computer.
+- With a **cloud** model those summaries go to that provider. The Shopping and Deal sources tabs say which model checkout uses.
+- Watches, deals, purchase history and the shopping browser's sign-ins live in your private app data folder. Keys live in your system keychain. None of it is in the project folder or in any build.
+
+**Good to know:**
+
+- Watches run while SlopBot is running. On macOS that includes after you close its window, until you quit.
+- Each watch shows its last successful check, next check, and what to do about errors. Failing watches back off automatically, and sites that ask SlopBot to slow down are respected.
+- Some stores (Micro Center, B&H, …) show a human check to automated visits. Open the page once in the shopping browser yourself, use a rendering service, or follow those deals through a feed.
+- Test a page from a terminal with `npm run slopbot -- shop check <url> [EUR]`.
 
 ## Connectors (MCP)
 
@@ -280,7 +357,7 @@ Tools: `list_bots`, `ask_bot`, `run_schedule`, `list_pending_approvals`, `get_ac
 
 ## Command line
 
-Everything in the app also works from a terminal (in a source checkout, prefix with `npm run`):
+Everything in the app also works from a terminal. In a source checkout, prefix with `npm run`, and put `--` before any flags (`npm run slopbot -- run ledger "…" --bg`) so npm passes them through:
 
 ```text
 slopbot init                        create slopbot.config.yaml
@@ -296,6 +373,12 @@ slopbot memory <bot>                show what a bot remembers
 slopbot ping [provider/model]       check that a model responds
 slopbot models                      local Ollama models
 slopbot pull <model> [--default]    download an Ollama model
+slopbot skills                      list skills and which bots use them
+slopbot skills add <path> [--bots a,b]   add a skill folder or SKILL.md (default: all bots)
+slopbot skills use <skill> <bots|*>      choose which bots use a skill
+slopbot skills rm <skill>           delete a skill
+slopbot shop                        list deal watches and recent deals
+slopbot shop check <url>            test whether a product page's price (or a feed) can be read
 slopbot connectors                  list and test MCP servers
 slopbot secret set|rm|check <name>  manage keys in your OS keychain
 slopbot mcp                         run as an MCP server for Claude Code etc.
@@ -365,8 +448,15 @@ Inside: `slopbot.config.yaml`, `slopbot.mcp.json`, `bots/`, and `data/`:
 | `data/memory/` | What each bot remembers |
 | `data/workspaces/<bot>/` | Each bot's sandbox (the finance ledger lives here) |
 | `data/vault.enc` | The encrypted vault |
+| `data/shopping/state.json` | Watches, deals, purchase history |
+| `data/skills/`, `data/skills.json` | Skills you wrote or imported, and which bots use which |
+| `data/channels/` | Telegram link (your chat id) |
 
-Secrets (API keys, tokens, the vault key) are **not** in this folder; they're in your OS keychain. The `data/` folder is private to your user account (0700, files 0600 on macOS/Linux). Recognizable keys and tokens (`sk-…`, `ghp_…`, `Bearer …`, `?api_key=…`, `user:pass@` in URLs, and similar) are replaced with `[redacted]` before conversations and activity are saved, and history older than `retentionDays` (30 by default) is deleted at startup. When running from source, the project folder is used instead.
+The shopping browser's sign-ins and cookies are kept by the app in the same per-user folder (`Partitions/shopping`). **Remove saved sign-ins** in Deal sources clears them, and **Clear shopping history** in Shopping removes finished deals.
+
+Secrets (API keys, tokens, the vault key) are **not** in this folder; they're in your OS keychain. The `data/` folder is private to your user account (0700, files 0600 on macOS/Linux). Recognizable keys and tokens (`sk-…`, `ghp_…`, `Bearer …`, `?api_key=…`, `user:pass@` in URLs, and similar) are replaced with `[redacted]` before conversations and activity are saved, and history older than `retentionDays` (30 by default) is deleted at startup.
+
+**Running from source:** config and bots come from the project folder, but your data still goes to a private per-user folder: `~/Library/Application Support/SlopBot/dev/data` (or `%APPDATA%\SlopBot\dev\data`, `~/.config/SlopBot/dev/data`). Older versions kept it in the project's `data/` folder; it's copied out on first run, and you can delete the old copy. Set `SLOPBOT_DATA` to choose another folder. `npm run privacy:scan` checks that nothing personal would be published.
 
 **What leaves your computer:** only what you choose: requests to the model provider you configured (nothing at all with a local model), web searches, sites and APIs your bots call (after your OK where it matters), and Telegram messages if you set that up.
 
@@ -377,6 +467,8 @@ Secrets (API keys, tokens, the vault key) are **not** in this folder; they're in
 - **Network limits:** bots fetch only sites you've allowed without asking; anything else needs your OK (or waits in Approvals), redirects to other sites aren't followed silently, and loopback/LAN/cloud-metadata addresses are blocked, checked on the actual IP being connected to.
 - **Connector labels aren't taken on faith:** a server's "read-only" labels only count once you mark it trusted, and "destructive" always asks.
 - **Shell commands are boxed in, even after you approve them:** they never see API keys from `.env` or your environment. On macOS (built-in `sandbox-exec`) and Linux with [bubblewrap](https://github.com/containers/bubblewrap) installed, they can only write inside the bot's folders, temp and package caches, and can't read `~/.ssh`, cloud/GitHub credentials, browser profiles, the Keychain, your project's `.env`, or SlopBot's own data. Network access isn't restricted, so builds and `git` still work. On Windows (and Linux without bubblewrap) only the environment is stripped, so treat approving a command as running it yourself.
+- **Purchases have hard limits:** clicks and typing only happen during a purchase you approved, on that deal's store. Every action is checked against the order total, currency, cart contents and the approved cap. Success requires a receipt with an order number, and nothing that might have ordered is ever retried. Bots never type passwords or card details, and checkout pages are summarized to the model without your personal details.
+- **Nothing personal in the code or builds:** your data lives in the per-user app data folder, even when you run from source. Keys live in the system keychain. A privacy scan runs before every build and in CI.
 - **Hard-blocked commands** on every OS.
 - **Untrusted content stays data:** web pages, files and tool results are marked untrusted, and policy still gates every action, whatever a page tries to say.
 - **Secrets never reach the model:** keychain-backed `${secret:…}` references, a vault the bots can't read, scrubbing of echoed keys, and redaction of keys in saved conversations and the activity log.
@@ -457,6 +549,8 @@ src/
   agent/        bot loading, the agent loop, prompts, tool selection
   channels/     Telegram
   mcp/          MCP client (connectors, OAuth) and MCP server (Claude Code bridge)
+  skills/       SKILL.md library and the skills.read tool
+  shopping/     deal watches, price/feed parsing, the purchase guard, browser.* tools
   ollama/       Ollama management
   policy/       allow / ask / deny rules
   providers/    OpenAI-compatible and Anthropic adapters
@@ -467,6 +561,7 @@ src/
   secrets.ts    Keychain / DPAPI / libsecret / file secret stores
 desktop/        Electron app (main process, preload, renderer UI, Bag Buddy)
 bots/           sample bots
+skills/         example skills (SKILL.md)
 assets/         Bag Buddy 3D model and branding
 test/           tests
 ```

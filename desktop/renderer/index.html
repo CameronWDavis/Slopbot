@@ -35,6 +35,9 @@
           <button class="view-btn" data-view="activity">Activity</button>
           <button class="view-btn" data-view="memory">Memory</button>
           <button class="view-btn" data-view="models">Models</button>
+          <button class="view-btn" data-view="skills">Skills</button>
+          <button class="view-btn" data-view="shopping">Shopping <span class="badge" id="shopping-badge" hidden>0</span></button>
+          <button class="view-btn" data-view="sources">Deal sources</button>
           <button class="view-btn" data-view="vault">Vault</button>
           <button class="view-btn" data-view="channels">Channels</button>
           <button class="view-btn" data-view="connectors">Connectors <span class="count" id="connectors-count" hidden>0</span></button>
@@ -88,6 +91,48 @@
           </div>
           <div class="connector-error" id="ollama-alert" hidden></div>
           <div class="list" id="models"></div>
+        </section>
+
+        <section class="view" id="view-skills" hidden>
+          <div class="chat-head">
+            <div>
+              <h1>Skills</h1>
+              <p class="muted">Teach your bots how you like things done. A skill is a <code>SKILL.md</code>: when to use it, then step-by-step instructions, plus any templates or scripts it needs. Bots only load a skill when a task calls for it, and skills can't skip your approvals. Only add skills from people you trust.</p>
+            </div>
+            <div class="head-actions">
+              <button class="ghost small" id="skills-folder">Open folder</button>
+              <button class="ghost small" id="skills-import">Add from folder…</button>
+              <button class="primary small" id="skills-new">+ New skill</button>
+            </div>
+          </div>
+          <div class="connector-error" id="skills-error" hidden></div>
+          <div class="list" id="skills-list"></div>
+        </section>
+
+        <section class="view" id="view-shopping" hidden>
+          <div class="chat-head">
+            <div>
+              <h1>Shopping</h1>
+              <p class="muted">Watch product pages, deal feeds and X. SlopBot verifies the real store listing, then asks you <strong>Buy / Skip / Open</strong> here and on Telegram. Your Buy covers that exact item, seller and maximum total; the shopper bot checks out with the payment saved in your store account and confirms the receipt.</p>
+            </div>
+            <div class="head-actions">
+              <button class="ghost small" id="shopping-browser">Shopping browser</button>
+              <button class="primary small" id="shopping-add">+ Watch</button>
+            </div>
+          </div>
+          <div class="connector-error" id="shopping-error" hidden></div>
+          <div class="list" id="shopping-list"></div>
+        </section>
+
+        <section class="view" id="view-sources" hidden>
+          <div class="chat-head">
+            <div>
+              <h1>Deal sources</h1>
+              <p class="muted">Where deals come from and how stores are read. Keys you add stay in your system keychain on this computer and are only shown masked.</p>
+            </div>
+          </div>
+          <div class="connector-error" id="sources-error" hidden></div>
+          <div class="list" id="sources-list"></div>
         </section>
 
         <section class="view" id="view-vault" hidden>
@@ -182,6 +227,66 @@
           <button class="ghost" id="mcp-cancel">Cancel</button>
           <button class="ghost" id="mcp-test">Test connection</button>
           <button class="primary" id="mcp-save">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="skill-form" hidden>
+      <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="skill-form-title">
+        <div class="modal-tag">Skill · SKILL.md</div>
+        <h2 id="skill-form-title">New skill</h2>
+        <label class="field"><span>Name <em>(lowercase and hyphens, e.g. weekly-report)</em></span><input id="skill-name" class="mono" placeholder="weekly-report" autocomplete="off" spellcheck="false" maxlength="64" /></label>
+        <label class="field"><span>When to use it <em>(the bot reads this to decide, so be specific)</em></span><textarea id="skill-description" class="skill-description" rows="2" maxlength="1024" placeholder="Use when writing the weekly spending report: format, sections and tone."></textarea></label>
+        <label class="field"><span>Instructions <em>(Markdown)</em></span><textarea id="skill-instructions" class="code json-input skill-instructions" spellcheck="false" placeholder="# Weekly report
+
+1. Run finance.summary for the last 7 days.
+2. Lead with total spent vs. the week before.
+3. List the top 3 categories with one line each.
+4. Keep it under 150 words. No emojis."></textarea></label>
+        <p class="muted small-text" id="skill-files" hidden></p>
+        <div class="field"><span>Bots that use it</span><div class="checks" id="skill-bots"></div></div>
+        <div class="connector-error" id="skill-form-error" hidden></div>
+        <div class="modal-actions">
+          <button class="ghost" id="skill-cancel">Cancel</button>
+          <button class="primary" id="skill-save">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="watch-form" hidden>
+      <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="watch-form-title">
+        <div class="modal-tag">Deal watch</div>
+        <h2 id="watch-form-title">New watch</h2>
+        <div class="segmented" id="watch-kind">
+          <button type="button" data-kind="product" class="active">Product page</button>
+          <button type="button" data-kind="feed">Deal feed</button>
+          <button type="button" data-kind="x_account">X account</button>
+          <button type="button" data-kind="x_search">X search</button>
+        </div>
+        <label class="field" id="watch-url-row"><span>Address</span><input id="watch-url" class="mono" autocomplete="off" spellcheck="false" /></label>
+        <label class="field" id="watch-x-row" hidden><span id="watch-x-label">X account</span><input id="watch-xquery" autocomplete="off" spellcheck="false" /></label>
+        <p class="muted small-text" id="watch-url-hint"></p>
+        <div class="chips" id="watch-feed-presets" hidden></div>
+        <label class="field"><span id="watch-keywords-label">Keywords</span><input id="watch-keywords" placeholder="4070, super" autocomplete="off" /></label>
+        <div class="shop-settings-grid">
+          <label class="field"><span>Exact variant <em>(the listing must say this, e.g. 12GB, MZ-V9P2T0B)</em></span><input id="watch-variants" placeholder="RTX 4070 SUPER, 12GB" autocomplete="off" /></label>
+          <label class="field"><span>Skip anything with <em>(optional)</em></span><input id="watch-exclude" placeholder="refurb, open box, laptop" autocomplete="off" /></label>
+        </div>
+        <label class="field"><span>Acceptable sellers <em>(optional; e.g. Newegg, Amazon.com. Others are ignored)</em></span><input id="watch-sellers" autocomplete="off" /></label>
+        <div class="shop-settings-grid three">
+          <label class="field"><span>Target price <em>(alert at or below)</em></span><input id="watch-target" type="number" min="0" step="0.01" /></label>
+          <label class="field"><span>Currency</span><select id="watch-currency" class="bot-select"><option>USD</option><option>EUR</option><option>GBP</option><option>CAD</option><option>AUD</option><option>JPY</option><option>CHF</option><option>SEK</option><option>NOK</option><option>DKK</option><option>PLN</option><option>MXN</option><option>INR</option><option>NZD</option></select></label>
+          <label class="field"><span>Max total <em>(with tax &amp; shipping, optional)</em></span><input id="watch-maxtotal" type="number" min="0" step="0.01" /></label>
+        </div>
+        <div class="shop-settings-grid">
+          <label class="field"><span>Check every (minutes)</span><input id="watch-every" type="number" min="1" max="1440" step="1" /></label>
+          <label class="field"><span>Name <em>(optional)</em></span><input id="watch-name" placeholder="RTX 4070 Super" autocomplete="off" /></label>
+        </div>
+        <p class="muted small-text">When a deal is found, SlopBot checks the store listing (item, seller, price, stock), then asks you: Buy, Skip or Open. Nothing is bought without your Buy. Watches run while SlopBot is running.</p>
+        <div class="connector-error" id="watch-form-error" hidden></div>
+        <div class="modal-actions">
+          <button class="ghost" id="watch-cancel">Cancel</button>
+          <button class="primary" id="watch-save">Save &amp; check</button>
         </div>
       </div>
     </div>

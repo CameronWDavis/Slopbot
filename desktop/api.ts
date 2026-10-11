@@ -144,6 +144,135 @@ export interface TelegramStatus {
   rejected: number;
 }
 
+export interface SkillInfo {
+  name: string;
+  description: string;
+  bots: string[];
+  /** Bots whose YAML file lists this skill (always on for them; change it in the file). */
+  yamlBots: string[];
+  /** Ships with SlopBot (read-only; editing saves your own copy). */
+  bundled?: boolean;
+  enabled: boolean;
+  license?: string;
+  error?: string;
+  files: number;
+}
+
+export interface SkillDraft {
+  name: string;
+  description: string;
+  instructions: string;
+  bots: string[];
+  previousName?: string;
+}
+
+export interface MoneyInfo {
+  /** Integer minor units (cents). */
+  minor: number;
+  currency: string;
+}
+
+export type WatchKind = "product" | "feed" | "x_account" | "x_search";
+
+export interface WatchInfo {
+  id: string;
+  name: string;
+  kind: WatchKind;
+  url?: string;
+  xQuery?: string;
+  keywords: string[];
+  exclude: string[];
+  variants: string[];
+  sellers: string[];
+  target?: MoneyInfo;
+  currency: string;
+  maxTotal?: MoneyInfo;
+  everyMinutes: number;
+  enabled: boolean;
+  createdAt: string;
+  lastCheckedAt?: string;
+  lastSuccessAt?: string;
+  nextCheckAt?: string;
+  failures: number;
+  lastError?: string;
+  lastHint?: string;
+  lastSummary?: string;
+  lastPrice?: MoneyInfo;
+  lastInStock?: boolean;
+  lastTitle?: string;
+  lastSeller?: string;
+}
+
+export type DealStatus = "pending" | "expired" | "skipped" | "queued" | "reviewing" | "paused" | "submitted" | "confirmed" | "failed" | "uncertain";
+
+export interface DealInfo {
+  id: string;
+  watchId: string;
+  watchName: string;
+  sources: string[];
+  postUrl?: string;
+  listing: { url: string; title: string; price: MoneyInfo; seller?: string; inStock?: boolean; checkedAt: string };
+  quantity: 1;
+  cap: MoneyInfo;
+  approval?: { nonce: string; expiresAt: string };
+  status: DealStatus;
+  note?: string;
+  foundAt: string;
+  updatedAt: string;
+  execution?: { total?: MoneyInfo; orderId?: string; submittedAt?: string; finishedAt?: string };
+}
+
+export interface ShoppingSettingsInfo {
+  extraAllowancePct: number;
+  approvalMinutes: number;
+  savedFeeds: { label: string; url: string }[];
+  renderService: "none" | "scrapingbee" | "scraperapi";
+  xMonthlyLimit: number;
+  xUsage: { month: string; posts: number; requests: number };
+}
+
+export interface ShoppingSnapshot {
+  watches: WatchInfo[];
+  deals: DealInfo[];
+  settings: ShoppingSettingsInfo;
+  /** The model that does checkout, and whether it runs on this computer. */
+  model: { model: string; local: boolean };
+  autoBuy: boolean;
+  buying: boolean;
+}
+
+export interface WatchDraft {
+  id?: string;
+  name?: string;
+  kind: WatchKind;
+  url?: string;
+  xQuery?: string;
+  keywords?: string[];
+  exclude?: string[];
+  variants?: string[];
+  sellers?: string[];
+  /** As typed, in major units ("499.99"). */
+  targetPrice?: string;
+  maxTotal?: string;
+  currency?: string;
+  everyMinutes?: number;
+  enabled?: boolean;
+}
+
+export type SourceId = "x" | "scrapingbee" | "scraperapi";
+
+export interface SourceInfo {
+  id: SourceId;
+  label: string;
+  keyLabel: string;
+  getKey: string;
+  note: string;
+  configured: boolean;
+  /** Last 4 characters only. */
+  masked: string;
+  lastTest?: { ok: boolean; message: string; at: string };
+}
+
 export interface SlopbotApi {
   info(): Promise<{ dataDir: string; rootDir: string; homeDir: string; defaultModel: string; version: string; secrets: "keychain" | "dpapi" | "libsecret" | "file" }>;
   listBots(): Promise<BotSummary[]>;
@@ -164,6 +293,36 @@ export interface SlopbotApi {
   mcpImport(json: string, bots: string[]): Promise<string[]>;
   mcpSignIn(name: string): Promise<McpServerStatus>;
   mcpSignOut(name: string): Promise<void>;
+  shoppingState(): Promise<ShoppingSnapshot>;
+  shoppingSaveWatch(w: WatchDraft): Promise<WatchInfo>;
+  shoppingRemoveWatch(id: string): Promise<void>;
+  shoppingSetEnabled(id: string, on: boolean): Promise<void>;
+  shoppingCheck(id: string): Promise<{ ok: boolean; summary: string; hint?: string }>;
+  /** Buy is bound to the deal's current approval nonce. */
+  shoppingBuy(dealId: string, nonce: string): Promise<void>;
+  shoppingSkip(dealId: string): Promise<void>;
+  shoppingRecheck(dealId: string): Promise<void>;
+  shoppingResume(dealId: string): Promise<void>;
+  shoppingCancel(dealId: string): Promise<void>;
+  shoppingResolve(dealId: string, ordered: boolean): Promise<void>;
+  shoppingSaveSettings(patch: Partial<ShoppingSettingsInfo>): Promise<ShoppingSettingsInfo>;
+  shoppingOpenBrowser(url?: string): Promise<void>;
+  shoppingClearHistory(): Promise<void>;
+  shoppingClearSignIns(): Promise<void>;
+  sourcesList(): Promise<SourceInfo[]>;
+  sourcesSave(id: SourceId, key: string): Promise<{ ok: boolean; message: string }>;
+  sourcesRemove(id: SourceId): Promise<void>;
+  sourcesTest(id: SourceId): Promise<{ ok: boolean; message: string }>;
+  onShoppingChanged(cb: () => void): () => void;
+  onShowShopping(cb: () => void): () => void;
+  skillsList(): Promise<SkillInfo[]>;
+  skillsGet(name: string): Promise<{ name: string; description: string; instructions: string; files: string[] }>;
+  skillsSave(draft: SkillDraft): Promise<string>;
+  /** Opens a file picker; resolves to the new skill's name, or null if cancelled. */
+  skillsImport(bots: string[]): Promise<string | null>;
+  skillsAssign(name: string, bots: string[], enabled: boolean): Promise<void>;
+  skillsRemove(name: string): Promise<void>;
+  skillsReveal(name?: string): Promise<void>;
   vaultList(): Promise<VaultEntryInfo[]>;
   vaultSave(input: Partial<VaultEntryInfo> & { name: string; kind: VaultEntryInfo["kind"]; secret?: string }): Promise<VaultEntryInfo>;
   vaultRemove(id: string): Promise<void>;

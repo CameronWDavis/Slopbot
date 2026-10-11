@@ -52,7 +52,8 @@ export function readLedger(ctx: ToolContext): Ledger {
 function writeLedger(ctx: ToolContext, ledger: Ledger) {
   fs.mkdirSync(ctx.roots[0], { recursive: true });
   ledger.transactions.sort((a, b) => a.date.localeCompare(b.date));
-  fs.writeFileSync(ledgerPath(ctx), JSON.stringify(ledger, null, 2));
+  fs.writeFileSync(ledgerPath(ctx), JSON.stringify(ledger, null, 2), { mode: 0o600 }); // your finances: private to you
+  if (process.platform !== "win32") fs.chmodSync(ledgerPath(ctx), 0o600);
 }
 
 export function categorize(description: string, rules: Rule[]): string {

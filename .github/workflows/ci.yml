@@ -36,6 +36,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Privacy scan (no keys, home paths or personal emails in what we publish)
+        run: node scripts/privacy-scan.mjs
+
       - name: Unit and integration tests
         run: npm test
 

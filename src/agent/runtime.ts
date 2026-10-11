@@ -14,6 +14,8 @@ import { Vault } from "../vault/vault.js";
 import type { BotDef } from "./bot.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { makeFindTool, selectTools, toolBudget } from "./toolselect.js";
+import { skillsForBot } from "../skills/skills.js";
+import { skillsReadTool } from "../skills/tool.js";
 
 export type ApprovalAnswer = "yes" | "no" | "always";
 
@@ -111,12 +113,16 @@ export class Agent {
     let step = 0;
     try {
       for (step = 1; step <= bot.maxSteps; step++) {
-        const { offered, hidden } = selectTools(this.tools, this.activeTools, userText, toolBudget(this.config, bot), this.findTool);
+        // Skills are re-read each step so ones added in the app mid-conversation show up.
+        const skills = skillsForBot(this.config, bot);
+        const tools = skills.length ? [...this.tools, skillsReadTool] : this.tools;
+        const { offered, hidden } = selectTools(tools, this.activeTools, userText, toolBudget(this.config, bot), this.findTool);
         this.offered = offered;
         const system = buildSystemPrompt({
           bot,
           tools: offered,
           hiddenTools: hidden,
+          skills,
           memory: store.readMemory(bot.name),
           roots: this.ctx.roots,
           mode: this.mode,
@@ -164,7 +170,12 @@ export class Agent {
   private async handleCall(call: ToolCall, pending: string[]): Promise<string> {
     const { bot, store, sessionId } = this;
     // Any of the bot's tools may run even if it wasn't offered this step (e.g. named by tools.find).
-    const tool = call.name === this.findTool.name && this.offered.includes(this.findTool) ? this.findTool : this.tools.find((t) => t.name === call.name);
+    const tool =
+      call.name === this.findTool.name && this.offered.includes(this.findTool)
+        ? this.findTool
+        : call.name === skillsReadTool.name && this.offered.includes(skillsReadTool)
+          ? skillsReadTool
+          : this.tools.find((t) => t.name === call.name);
     if (tool?.name.startsWith("mcp.")) this.activeTools.add(tool.name);
     if (!tool) {
       this.hooks.onToolCall?.(call, { action: "deny", reason: "not available to this bot" });

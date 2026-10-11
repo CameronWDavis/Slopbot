@@ -11,6 +11,16 @@ export const ALL_TOOLS: Tool[] = [...fsTools, ...shellTools, ...httpTools, ...me
 
 const byName = new Map(ALL_TOOLS.map((t) => [t.name, t]));
 
+/** Tools that only exist in some processes (e.g. browser.* in the desktop app). Same names replace earlier ones. */
+export function registerTools(tools: Tool[]) {
+  for (const t of tools) {
+    const i = ALL_TOOLS.findIndex((x) => x.name === t.name);
+    if (i >= 0) ALL_TOOLS[i] = t;
+    else ALL_TOOLS.push(t);
+    byName.set(t.name, t);
+  }
+}
+
 export const getTool = (name: string) => byName.get(name);
 
 /** Expand a bot's tool globs ("fs.*", "email.send") into concrete tools. */

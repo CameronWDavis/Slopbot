@@ -1,5 +1,5 @@
 // Electron main process: owns config, bots and Agent instances, and talks to the UI over IPC.
-import { app, BrowserWindow, ipcMain, net, protocol, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, net, Notification, protocol, shell } from "electron";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -19,8 +19,16 @@ import { acquireLock } from "../src/lock.js";
 import { startDaemon } from "../src/scheduler/scheduler.js";
 import { openSecretStore } from "../src/secrets.js";
 import { Store, newId } from "../src/store/store.js";
-import { toolsFor } from "../src/tools/registry.js";
-import type { ActivityItem, AgentEvent, ApprovalRequest, BotSummary, QueuedApproval } from "./api.js";
+import { registerTools, toolsFor } from "../src/tools/registry.js";
+import { makeBrowserTools } from "../src/shopping/browser-tools.js";
+import { formatMoney } from "../src/shopping/money.js";
+import { checkoutModel, describeDeal, ShoppingService } from "../src/shopping/service.js";
+import { SOURCE_INFO, maskSecret, type SourceId } from "../src/shopping/sources.js";
+import { AUTO_BUY_ENABLED, type Deal, type ShoppingSettings, type WatchInput } from "../src/shopping/state.js";
+import { esc } from "../src/channels/telegram.js";
+import { ElectronShopBrowser } from "./shopping-browser.js";
+import { addSkill, assign, getSkill, listSkills, removeSkill, skillFiles, skillsDir, writeSkill } from "../src/skills/skills.js";
+import type { ActivityItem, AgentEvent, ApprovalRequest, BotSummary, QueuedApproval, SkillInfo } from "./api.js";
 
 protocol.registerSchemesAsPrivileged([
   { scheme: "app", privileges: { standard: true, secure: true, supportFetchAPI: true } },
@@ -52,6 +60,8 @@ let store: Store;
 let mcp: McpManager;
 let ollama: Ollama;
 let telegram: TelegramChannel;
+let shopping: ShoppingService;
+let shopBrowser: ElectronShopBrowser;
 let home: string;
 const pulls = new Map<string, AbortController>();
 let win: BrowserWindow | null = null;
@@ -100,6 +110,125 @@ function summarize(e: Record<string, any>): string {
     default:
       return "";
   }
+}
+
+/** Config plus where the app's built-in (public, read-only) skills are. */
+function loadAppConfig() {
+  const c = loadConfig(home);
+  c.bundledSkillsDir = app.isPackaged ? path.join(process.resourcesPath, "seed", "skills") : path.join(path.resolve(__dirname, ".."), "skills");
+  return c;
+}
+
+function showShopping() {
+  if (!win || win.isDestroyed()) createWindow();
+  win!.show();
+  win!.focus();
+  win!.webContents.send("shopping:show");
+}
+
+const timeOf = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "");
+
+/** The Telegram alert for a deal waiting for Buy: exact item, seller, quantity, price and cap. */
+function dealAlert(deal: Deal, reconfirm: boolean) {
+  const d = describeDeal(deal);
+  const m = checkoutModel(config, shopping.state.settings().bot);
+  const lines = [
+    reconfirm ? `⚠️ <b>Changed: confirm again</b> · ${esc(deal.watchName)}` : `🛒 <b>Deal</b> · ${esc(deal.watchName)}`,
+    `<b>${esc(d.item)}</b>`,
+    `Seller: ${esc(d.seller)} · Store: ${esc(d.store)}`,
+    `Quantity: 1 · Price: <b>${esc(d.price)}</b> (${esc(d.currency)})`,
+    `Max total with tax &amp; shipping: <b>${esc(d.cap)}</b>`,
+    deal.note ? `<i>${esc(deal.note)}</i>` : "",
+    `Seen on: ${esc(deal.sources.join(", "))}`,
+    `Buy button valid until ${esc(timeOf(d.expires))}.`,
+    m.local ? "" : `<i>Checkout uses ${esc(m.model)}, a cloud model: the cart and checkout summaries it reads (no names, addresses or card details) are sent to that provider.</i>`,
+  ].filter(Boolean);
+  const buttons = [
+    [
+      { text: `🛒 Buy (max ${d.cap})`, data: `deal:${deal.id}:buy:${deal.approval?.nonce}` },
+      { text: "Skip", data: `deal:${deal.id}:skip` },
+    ],
+    [{ text: "Open deal ↗", url: d.url }],
+  ];
+  return { html: lines.join("\n"), buttons };
+}
+
+/** Deal watching runs while the app is running; buying uses the shopping browser. */
+function setUpShopping() {
+  shopBrowser = new ElectronShopBrowser(path.join(rendererDir, "assets", "branding", "icon-256.png"));
+  const changed = () => win?.webContents.send("shopping:changed");
+  const notify = (title: string, body: string) => {
+    const n = new Notification({ title, body });
+    n.on("click", showShopping);
+    n.show();
+  };
+  shopping = new ShoppingService(
+    config,
+    store,
+    {
+      onChange: changed,
+      readWithBrowser: (url, currency) => shopBrowser.readProduct(url, currency),
+      getBrowser: () => shopBrowser,
+      beginExecution: (x) => shopBrowser.setExecution(x),
+      endExecution: () => shopBrowser.setExecution(undefined),
+      secrets: openSecretStore(config.dataDir),
+      log: (m) => console.log(m),
+      onDeal: (deal, _watch, { reconfirm }) => {
+        notify(reconfirm ? `Changed: ${deal.watchName}` : `Deal: ${deal.watchName}`, `${deal.listing.title} · ${formatMoney(deal.listing.price)} · max ${formatMoney(deal.cap)}`);
+        const a = dealAlert(deal, !!reconfirm);
+        void telegram.notify(a.html, a.buttons).catch(() => {});
+        changed();
+      },
+      onUpdate: (deal) => {
+        const titles: Record<string, string> = { confirmed: "✅ Order confirmed", uncertain: "⚠️ Check your account", paused: "⏸ Purchase needs you", failed: "Purchase stopped", expired: "Deal expired" };
+        const title = titles[deal.status] ?? `Deal ${deal.status}`;
+        notify(title, `${deal.listing.title}\n${(deal.note ?? "").slice(0, 160)}`);
+        const buttons =
+          deal.status === "paused"
+            ? [[{ text: "▶ Resume", data: `deal:${deal.id}:resume` }, { text: "Cancel", data: `deal:${deal.id}:cancel` }]]
+            : deal.status === "uncertain"
+              ? [[{ text: "It was ordered", data: `deal:${deal.id}:ordered` }, { text: "Not ordered", data: `deal:${deal.id}:notordered` }]]
+              : deal.status === "expired"
+                ? [[{ text: "Check again", data: `deal:${deal.id}:recheck` }]]
+                : [];
+        void telegram.notify(`<b>${esc(title)}</b>\n${esc(deal.listing.title)}\n${esc(deal.note ?? "")}`, buttons).catch(() => {});
+      },
+    },
+    mcp,
+  );
+  registerTools(makeBrowserTools(() => shopBrowser, () => shopping.execution));
+  shopping.start();
+}
+
+/** Telegram button presses for deals: deal:<id>:<action>[:<nonce>]. */
+async function onDealButton(id: string, action: string, nonce?: string): Promise<string> {
+  const later = (p: Promise<unknown>) => void p.catch((e) => telegram.notify(`⚠️ ${esc(e.message)}`).catch(() => {}));
+  switch (action) {
+    case "buy": {
+      const d = shopping.state.deal(id);
+      if (!d || d.status !== "pending") return `That deal is ${d?.status ?? "gone"}.`;
+      if (!nonce || d.approval?.nonce !== nonce) return "That Buy button is out of date.";
+      later(shopping.approve(id, nonce));
+      return "Buying… I'll message you with the result.";
+    }
+    case "skip":
+      shopping.skip(id);
+      return "Skipped";
+    case "resume":
+      later(shopping.resume(id));
+      return "Resuming…";
+    case "cancel":
+      shopping.cancel(id);
+      return "Cancelled";
+    case "ordered":
+    case "notordered":
+      shopping.resolveUncertain(id, action === "ordered");
+      return "Thanks, noted.";
+    case "recheck":
+      later(shopping.recheck(id));
+      return "Checking the price again…";
+  }
+  return "Unknown button";
 }
 
 function registerIpc() {
@@ -207,12 +336,122 @@ function registerIpc() {
   // ── Ollama (local models) ──────────────────────────
   /** Re-read config after edits so new defaults/models apply to the next message. */
   const reloadConfig = () => {
-    config = loadConfig(home);
+    config = loadAppConfig();
     ollama.baseUrl = ollamaUrl(config);
     telegram.config = config;
     for (const name of agents.keys()) if (!busy.has(name)) agents.delete(name);
   };
   // ── Vault (bots use these; the UI and the model never get secrets back) ──
+  // Skills (SKILL.md folders in <home>/skills)
+  ipcMain.handle("skills:list", (): SkillInfo[] => {
+    const bots = loadBots(config);
+    return listSkills(config).map((s) => ({
+      name: s.name,
+      description: s.description,
+      bots: s.bots,
+      yamlBots: bots.filter((b) => b.skills?.includes(s.name) || b.skills?.includes("*")).map((b) => b.name),
+      bundled: s.bundled,
+      enabled: s.enabled,
+      license: s.license,
+      error: s.error,
+      files: s.error ? 0 : skillFiles(s.dir).length,
+    }));
+  });
+  ipcMain.handle("skills:get", (_e, name: string) => {
+    const s = getSkill(config, name);
+    return { name, description: String(s.meta.description ?? ""), instructions: s.body, files: s.files };
+  });
+  ipcMain.handle("skills:save", (_e, input: { name: string; description: string; instructions: string; bots: string[]; previousName?: string }) => writeSkill(config, input));
+  ipcMain.handle("skills:import", async (_e, bots: string[]) => {
+    const r = await dialog.showOpenDialog(win!, {
+      title: "Add a skill",
+      message: "Choose a skill folder (or its SKILL.md)",
+      properties: ["openFile", "openDirectory"],
+      filters: [{ name: "SKILL.md", extensions: ["md"] }],
+    });
+    if (r.canceled || !r.filePaths[0]) return null;
+    return addSkill(config, r.filePaths[0], bots);
+  });
+  ipcMain.handle("skills:assign", (_e, name: string, bots: string[], enabled: boolean) => assign(config, name, bots, enabled));
+  ipcMain.handle("skills:remove", (_e, name: string) => removeSkill(config, name));
+  ipcMain.handle("skills:reveal", (_e, name?: string) => {
+    // Only ever a skill folder SlopBot knows about (never a path built from the name).
+    if (name !== undefined) {
+      const s = listSkills(config).find((x) => x.name === name);
+      if (!s) throw new Error(`No skill "${name}"`);
+      return shell.openPath(s.dir);
+    }
+    fs.mkdirSync(skillsDir(config), { recursive: true, mode: 0o700 });
+    return shell.openPath(skillsDir(config));
+  });
+
+  // Shopping: deal watches and purchases
+  const shoppingSnapshot = () => {
+    const s = shopping.state.read();
+    return {
+      watches: s.watches.map(({ seen, sinceId, ...w }) => w),
+      deals: s.deals.slice(-100).reverse(),
+      settings: { extraAllowancePct: s.settings.extraAllowancePct, approvalMinutes: s.settings.approvalMinutes, savedFeeds: s.settings.savedFeeds, renderService: s.settings.renderService, xMonthlyLimit: s.settings.xMonthlyLimit, xUsage: s.settings.xUsage },
+      model: checkoutModel(config, s.settings.bot),
+      autoBuy: AUTO_BUY_ENABLED,
+      buying: !!shopping.execution,
+    };
+  };
+  ipcMain.handle("shopping:state", shoppingSnapshot);
+  ipcMain.handle("shopping:saveWatch", (_e, input: WatchInput) => {
+    const w = shopping.state.saveWatch(input);
+    void shopping.check(w.id); // first check right away
+    return w;
+  });
+  ipcMain.handle("shopping:removeWatch", (_e, id: string) => shopping.state.removeWatch(id));
+  ipcMain.handle("shopping:setEnabled", (_e, id: string, on: boolean) => shopping.state.patchWatch(id, { enabled: on, nextCheckAt: undefined, failures: 0 }));
+  ipcMain.handle("shopping:check", async (_e, id: string) => {
+    const r = await shopping.check(id);
+    return { ok: r.ok, summary: r.summary, hint: r.hint };
+  });
+  ipcMain.handle("shopping:buy", (_e, id: string, nonce: string) => {
+    const d = shopping.state.deal(id);
+    if (!d || d.status !== "pending" || d.approval?.nonce !== nonce) throw new Error("That deal changed or expired. Refresh and check it again.");
+    void shopping.approve(id, nonce).catch(() => {}); // the result arrives via shopping:changed + a notification
+  });
+  ipcMain.handle("shopping:skip", (_e, id: string) => void shopping.skip(id));
+  ipcMain.handle("shopping:recheck", async (_e, id: string) => void (await shopping.recheck(id)));
+  ipcMain.handle("shopping:resume", (_e, id: string) => void shopping.resume(id).catch(() => {}));
+  ipcMain.handle("shopping:cancel", (_e, id: string) => void shopping.cancel(id));
+  ipcMain.handle("shopping:resolve", (_e, id: string, ordered: boolean) => void shopping.resolveUncertain(id, ordered));
+  ipcMain.handle("shopping:saveSettings", (_e, patch: Partial<ShoppingSettings>) => {
+    const allowed: (keyof ShoppingSettings)[] = ["extraAllowancePct", "approvalMinutes", "savedFeeds", "renderService", "xMonthlyLimit"];
+    shopping.state.saveSettings(Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k as keyof ShoppingSettings))));
+    return shoppingSnapshot().settings;
+  });
+  ipcMain.handle("shopping:openBrowser", (_e, url?: string) => {
+    if (url && !/^https?:\/\//.test(url)) throw new Error("Only web addresses");
+    shopBrowser.show(url);
+  });
+  ipcMain.handle("shopping:clearHistory", () => shopping.state.clearHistory());
+  ipcMain.handle("shopping:clearSignIns", () => shopBrowser.clearSignIns());
+  // Deal sources: keys live in the OS credential store; the UI only ever sees a masked tail.
+  ipcMain.handle("sources:list", () =>
+    (Object.keys(SOURCE_INFO) as SourceId[]).map((id) => {
+      const key = shopping.credentials.get(id);
+      return { id, ...SOURCE_INFO[id], configured: !!key, masked: maskSecret(key), lastTest: shopping.state.settings().sourceTests[id] };
+    }),
+  );
+  ipcMain.handle("sources:save", (_e, id: SourceId, key: string) => {
+    if (!(id in SOURCE_INFO)) throw new Error("Unknown source");
+    shopping.credentials.set(id, key);
+    return shopping.testSource(id);
+  });
+  ipcMain.handle("sources:remove", (_e, id: SourceId) => {
+    if (!(id in SOURCE_INFO)) throw new Error("Unknown source");
+    shopping.credentials.remove(id);
+    shopping.state.update((s) => void delete s.settings.sourceTests[id]);
+  });
+  ipcMain.handle("sources:test", (_e, id: SourceId) => {
+    if (!(id in SOURCE_INFO)) throw new Error("Unknown source");
+    return shopping.testSource(id);
+  });
+
   ipcMain.handle("vault:list", () => openVault(config).list());
   ipcMain.handle("vault:save", (_e, input: Partial<VaultEntry> & { name: string; kind: VaultEntry["kind"] }) => {
     const saved = openVault(config).upsert(input);
@@ -390,7 +629,12 @@ function createWindow() {
     return { action: "deny" };
   });
   win.loadURL("app://slopbot/index.html");
-  win.on("closed", () => (win = null));
+  win.on("closed", () => {
+    win = null;
+    // The shopping browser hides instead of closing, so "all windows closed" never fires while it
+    // exists: on Windows/Linux closing the main window quits, as before.
+    if (process.platform !== "darwin") app.quit();
+  });
 }
 
 /**
@@ -410,6 +654,8 @@ function adoptShellPath() {
 }
 
 app.on("before-quit", () => {
+  shopping?.stop();
+  shopBrowser?.close();
   void mcp?.closeAll();
   void telegram?.stop();
   for (const ac of pulls.values()) ac.abort();
@@ -420,10 +666,10 @@ app.whenReady().then(() => {
   // In development the Dock shows Electron's icon; packaged builds use icon.icns from electron-builder.
   if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(path.join(__dirname, "branding", "icon-mac-1024.png"));
   home = resolveHome();
-  config = loadConfig(home);
+  config = loadAppConfig();
   ollama = new Ollama(ollamaUrl(config));
   store = new Store(config.dataDir, { retentionDays: config.retentionDays });
-  mcp = new McpManager(config, (url) => shell.openExternal(url));
+  mcp = new McpManager(config, (url) => (/^https:\/\/|^http:\/\/(localhost|127\.0\.0\.1)[:/]/.test(url) ? shell.openExternal(url) : undefined));
 
   protocol.handle("app", (req) => {
     const { pathname } = new URL(req.url);
@@ -440,7 +686,9 @@ app.whenReady().then(() => {
     apiBase: process.env.SLOPBOT_TELEGRAM_API, // dev/testing only; defaults to api.telegram.org
     onStatus: (s) => win?.webContents.send("telegram:status", s),
     log: (m) => console.log(m),
+    onAction: async (kind, id, answer, extra) => (kind === "deal" ? onDealButton(id, answer, extra) : "Unknown button"),
   });
+  setUpShopping();
   registerIpc();
   createWindow();
   // Always-on while the app is open: Telegram, plus the bots' schedules (unless `slopbot daemon`
@@ -449,7 +697,7 @@ app.whenReady().then(() => {
   if (acquireLock(config.dataDir, "scheduler")) startDaemon(config, store, mcp, { telegram: (t, x) => telegram.report(t, x) });
   if (process.env.SLOPBOT_SMOKE) smokeTest(process.env.SLOPBOT_SMOKE);
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (!win || win.isDestroyed()) createWindow();
   });
 });
 

@@ -4,6 +4,7 @@ import YAML from "yaml";
 import type { ProviderConfig } from "./providers/types.js";
 import type { SearchConfig } from "./search/search.js";
 import type { PolicyRule } from "./policy/policy.js";
+import { defaultDataDir } from "./paths.js";
 import { MissingSecretError, openSecretStore, resolveSecretRefs } from "./secrets.js";
 
 export interface SmtpConfig {
@@ -31,6 +32,8 @@ export interface Config {
    * The environment is always stripped of API keys either way.
    */
   shellSandbox?: boolean;
+  /** Read-only skills that ship with SlopBot (the app bundle, or skills/ in a source checkout). */
+  bundledSkillsDir?: string;
   /** Days to keep conversations, activity and resolved approvals (default 30; 0 = forever). */
   retentionDays?: number;
   /**
@@ -79,7 +82,8 @@ export function loadConfig(rootDir = process.env.SLOPBOT_HOME ? path.resolve(pro
   loadDotEnv(rootDir);
   const file = path.join(rootDir, CONFIG_FILE);
   const parsed: any = fs.existsSync(file) ? (YAML.parse(fs.readFileSync(file, "utf8")) ?? {}) : {};
-  const dataDir = path.resolve(rootDir, process.env.SLOPBOT_DATA ?? parsed.dataDir ?? "data");
+  const explicit = process.env.SLOPBOT_DATA ?? parsed.dataDir;
+  const dataDir = explicit ? path.resolve(rootDir, explicit) : defaultDataDir(rootDir);
   const secret = (s: string) => {
     if (!s.includes("${secret:")) return s;
     try {

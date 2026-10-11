@@ -20,6 +20,8 @@ tools:
   - "fs.read"
   - "email.draft"
   - "email.send"
+# Skills from the skills/ folder (also assignable in the app's Skills tab):
+skills: [weekly-money-report]
 # Extra folders the bot may read (e.g. where you download bank statements):
 allowedPaths: [./examples]   # where your bank CSV exports live
 permissions:

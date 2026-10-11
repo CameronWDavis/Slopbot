@@ -148,11 +148,12 @@ test("logs and saved chats don't keep credentials, and are private to this user"
     github: "ghp_0123456789abcdefABCDEF0123456789abcd",
     aws: "AKIAIOSFODNN7EXAMPLE",
     telegram: "123456789:AAH0123456789abcdefghijklmnopqrstuv",
+    card: "card 4111 1111 1111 1111 exp 12/29",
   };
   store.audit({ bot: "b", session: "s", type: "tool", tool: "http.fetch", args: { url: secrets.url }, result: Object.values(secrets).join(" ") });
   store.saveSession("b", "s", [{ role: "user", content: Object.values(secrets).join("\n") }]);
   const disk = fs.readFileSync(path.join(dir, "data", "audit.jsonl"), "utf8") + fs.readFileSync(path.join(dir, "data", "sessions", "b", "s.json"), "utf8");
-  for (const leak of ["abc123SECRETVALUE", "hunter2pass", "abcdef1234567890XYZ", "AbCdEf0123456789AbCdEf", "ghp_0123", "AKIAIOSFODNN7EXAMPLE", "AAH0123456789"])
+  for (const leak of ["abc123SECRETVALUE", "hunter2pass", "abcdef1234567890XYZ", "AbCdEf0123456789AbCdEf", "ghp_0123", "AKIAIOSFODNN7EXAMPLE", "AAH0123456789", "4111 1111 1111 1111"])
     assert.ok(!disk.includes(leak), `leaked ${leak}`);
   assert.match(disk, /q=hi/, "the rest of the text survives");
   // Ordinary prose is left alone.
@@ -216,4 +217,17 @@ test("on macOS an approved command can't write outside the sandbox or read crede
     delete process.env.SLOPBOT_TEST_KEY;
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ── audit follow-ups ─────────────────────────────────
+import { SlopOAuthProvider } from "../src/mcp/oauth.js";
+
+test("a connector can't make SlopBot open anything but a web sign-in page", async () => {
+  const opened: string[] = [];
+  const p = new SlopOAuthProvider({} as any, "evil", (u) => void opened.push(u));
+  for (const bad of ["file:///Applications/Calculator.app", "smb://host/share", "javascript:alert(1)", "http://example.com/login", "https://user:pw@example.com/"])
+    await assert.rejects(p.redirectToAuthorization(new URL(bad)), /unsafe sign-in address/, bad);
+  await p.redirectToAuthorization(new URL("https://auth.example.com/authorize?x=1"));
+  await p.redirectToAuthorization(new URL("http://127.0.0.1:9999/authorize"));
+  assert.deepEqual(opened, ["https://auth.example.com/authorize?x=1", "http://127.0.0.1:9999/authorize"]);
 });

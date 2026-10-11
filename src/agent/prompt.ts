@@ -12,8 +12,10 @@ export function buildSystemPrompt(opts: {
   mode: Mode;
   /** Connector tools not offered this step (discoverable with tools.find). */
   hiddenTools?: number;
+  /** Skills this bot can load with skills.read. */
+  skills?: { name: string; description: string }[];
 }): string {
-  const { bot, tools, memory, roots, mode, hiddenTools = 0 } = opts;
+  const { bot, tools, memory, roots, mode, hiddenTools = 0, skills = [] } = opts;
   const now = new Date();
   const recent = memory.slice(-30);
 
@@ -40,6 +42,10 @@ ${roots.length > 1 ? `- Other directories you may access: ${roots.slice(1).join(
 - When you learn a lasting preference, goal, or fact about the user, save it with memory.remember (if available).
 - Be concise. End with a clear summary of what you did and anything that needs the user.
 ${
+  skills.length
+    ? `\n# Skills\nThe user gave you these skills. When a task matches one, call skills.read with its name first and follow its instructions (they still go through the usual approvals).\n${skills.map((s) => `- ${s.name}: ${s.description.replace(/\s+/g, " ")}`).join("\n")}\n`
+    : ""
+}${
   recent.length
     ? `\n# What you remember about the user\n${recent.map((n) => `- ${n.text} [${n.id}]`).join("\n")}\n`
     : ""

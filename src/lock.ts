@@ -23,7 +23,7 @@ export function acquireLock(dataDir: string, name: string): { release: () => voi
   fs.mkdirSync(dataDir, { recursive: true });
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      fs.writeFileSync(file, String(process.pid), { flag: "wx" });
+      fs.writeFileSync(file, String(process.pid), { flag: "wx", mode: 0o600 });
       heldHere.add(file);
       let released = false;
       const release = () => {

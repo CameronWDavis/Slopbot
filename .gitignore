@@ -6,6 +6,7 @@ data/
 !.env.example
 slopbot.config.yaml
 slopbot.mcp.json
+slopbot.skills.json
 *.local
 *.pem
 *.p12

@@ -106,6 +106,8 @@ export class TelegramChannel {
       log?: (msg: string) => void;
       approvalPollMs?: number;
       retryMs?: number;
+      /** Buttons other features add (e.g. "deal:<id>:buy"). Returns a short note for the button toast. */
+      onAction?: (kind: string, id: string, answer: string, extra?: string) => Promise<string | void>;
     },
   ) {
     this.stateFile = path.join(opts.config.dataDir, "channels", "telegram.json");
@@ -538,7 +540,7 @@ export class TelegramChannel {
       this.reject("button press from someone else", q.from);
       return;
     }
-    const [kind, id, answer] = String(q.data ?? "").split(":");
+    const [kind, id, answer, extra] = String(q.data ?? "").split(":");
     let note = "";
     if (kind === "ask") {
       note = this.resolveAsk(id, answer as ApprovalAnswer) ? "" : "That request already expired.";
@@ -557,8 +559,23 @@ export class TelegramChannel {
         await this.sendHtml(q.message.chat.id, `❌ Denied <code>${esc(a.call.name)}</code>.`);
       }
       void this.api("editMessageReplyMarkup", { chat_id: q.message.chat.id, message_id: q.message.message_id, reply_markup: { inline_keyboard: [] } }).catch(() => {});
+    } else if (this.opts.onAction) {
+      void this.api("editMessageReplyMarkup", { chat_id: q.message.chat.id, message_id: q.message.message_id, reply_markup: { inline_keyboard: [] } }).catch(() => {});
+      try {
+        note = (await this.opts.onAction(kind, id, answer, extra)) ?? "";
+      } catch (e: any) {
+        note = e?.message ?? String(e);
+      }
     }
     await this.api("answerCallbackQuery", { callback_query_id: q.id, text: note || undefined }).catch(() => {});
+  }
+
+  /** Send the owner a message with buttons (callback data is "<kind>:<id>:<answer>"). No-op if not linked. */
+  async notify(html: string, buttons: ({ text: string; data: string } | { text: string; url: string })[][] = []): Promise<boolean> {
+    if (!this.running || !this.state.ownerChatId) return false;
+    const keyboard = buttons.map((row) => row.map((b) => ("url" in b ? { text: b.text, url: b.url } : { text: b.text, callback_data: b.data })));
+    await this.sendHtml(this.state.ownerChatId, html, keyboard.length ? { reply_markup: { inline_keyboard: keyboard } } : {});
+    return true;
   }
 
   /** Deliver a scheduled report (schedules with `notify: telegram`). */

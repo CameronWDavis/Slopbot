@@ -16,6 +16,9 @@ import { Ollama, ollamaProviderName, ollamaUrl } from "./ollama/ollama.js";
 import { ensureOllamaProvider, setDefaultModel } from "./config-edit.js";
 import { Store } from "./store/store.js";
 import { toolsFor } from "./tools/registry.js";
+import { addSkill, assign, listSkills, removeSkill, skillsDir } from "./skills/skills.js";
+import { ShoppingService } from "./shopping/service.js";
+import { formatMoney } from "./shopping/money.js";
 
 const c = {
   dim: (s: string) => `\x1b[2m${s}\x1b[0m`,
@@ -43,6 +46,12 @@ const HELP = `${c.bold("slopbot")}: open-source personal AI agents
   slopbot connectors                  list MCP servers your bots use, and test them
   slopbot secret set <name>           store an API key in the Keychain; use it as \${secret:<name>}
   slopbot secret rm <name>            delete a stored secret
+  slopbot skills                      list skills (SKILL.md) and which bots use them
+  slopbot skills add <path> [--bots a,b]   add a skill folder or SKILL.md (default: all bots)
+  slopbot skills use <skill> <bots|*>      choose which bots use a skill (comma-separated)
+  slopbot skills rm <skill>           delete a skill
+  slopbot shop                        list deal watches and recent deals (manage them in the app's Shopping tab)
+  slopbot shop check <url> [EUR]      test whether SlopBot can read a product page (price, stock, seller)
   slopbot models                      local Ollama models (and whether Ollama is running)
   slopbot pull <model> [--default]    download an Ollama model (optionally make it the default)
 `;
@@ -243,6 +252,63 @@ async function main() {
       } else if (sub === "check") {
         console.log(store.get(need(name, "secret name")) === undefined ? `${name}: not set` : `${name}: set (in ${where})`);
       } else console.log("Usage: slopbot secret set|rm|check <name>");
+      return;
+    }
+
+    case "skills":
+    case "skill": {
+      const [sub, a1, a2] = rest;
+      const botsFlag = rest.indexOf("--bots");
+      const bots = botsFlag >= 0 ? String(rest[botsFlag + 1] ?? "").split(",").filter(Boolean) : ["*"];
+      if (!sub || sub === "list") {
+        const skills = listSkills(config);
+        const allBots = loadBots(config);
+        if (!skills.length) return console.log(`No skills yet. Add one with: slopbot skills add <folder or SKILL.md>  (library: ${skillsDir(config)})`);
+        for (const s of skills) {
+          const viaYaml = allBots.filter((b) => b.skills?.includes(s.name) || b.skills?.includes("*")).map((b) => `${b.name} (yaml)`);
+          const who = s.bots.includes("*") ? "all bots" : [...s.bots, ...viaYaml.filter((y) => !s.bots.includes(y.split(" ")[0]))].join(", ") || "no bots yet";
+          console.log(`${c.bold(c.cyan(s.name))}  ${s.error ? c.red(`✗ ${s.error}`) : c.dim(who + (s.enabled ? "" : " (off)"))}`);
+          if (s.description) console.log(`  ${s.description}`);
+        }
+      } else if (sub === "add") {
+        const name = addSkill(config, need(a1, "path to a skill folder or SKILL.md"), bots);
+        console.log(`${c.green("✓")} Added skill ${c.bold(name)} for ${bots.includes("*") ? "all bots" : bots.join(", ")}.`);
+      } else if (sub === "use") {
+        need(a1, "skill name");
+        if (!listSkills(config).some((s) => s.name === a1)) throw new Error(`No skill "${a1}"`);
+        assign(config, a1, need(a2, "bots (comma-separated, or *)").split(",").filter(Boolean));
+        console.log(`${c.green("✓")} ${a1} → ${a2}`);
+      } else if (sub === "rm") {
+        removeSkill(config, need(a1, "skill name"));
+        console.log(`Removed ${a1}.`);
+      } else console.log("Usage: slopbot skills [list] | add <path> [--bots a,b] | use <skill> <bots> | rm <skill>");
+      return;
+    }
+
+    case "shop": {
+      const [sub, url, cur] = rest;
+      const shop = new ShoppingService(config, store);
+      if (sub === "check") {
+        need(url, "product page URL");
+        const currency = (cur ?? "USD").toUpperCase();
+        try {
+          const info = await shop.readListing(url, currency);
+          console.log(`${c.green("✓")} ${info.title ?? ""}`);
+          console.log(`  price: ${formatMoney(info.price)}  stock: ${info.inStock === undefined ? "not shown" : info.inStock ? "in stock" : "sold out"}  seller: ${info.seller ?? "not shown"}  (from ${info.source})`);
+        } catch (e: any) {
+          console.log(c.red(`✗ ${e.message}`));
+          if (e.hint) console.log(c.dim(`  ${e.hint}`));
+          console.log(c.dim("  In the desktop app, pages that block plain downloads are also tried in the shopping browser."));
+        }
+        return;
+      }
+      const s = shop.state.read();
+      if (!s.watches.length) console.log("No watches yet. Add them in the desktop app (Shopping).");
+      for (const w of s.watches) {
+        const last = w.lastError ? c.red(w.lastError) : (w.lastSummary ?? "");
+        console.log(`${c.bold(c.cyan(w.name))} ${c.dim(w.kind)} ${w.enabled ? "" : c.dim("(paused)")}  ${last}`);
+      }
+      for (const d of s.deals.slice(-10).reverse()) console.log(c.dim(`  ${d.status.padEnd(10)} ${d.listing.title.slice(0, 60)} ${formatMoney(d.execution?.total ?? d.listing.price)}`));
       return;
     }
 

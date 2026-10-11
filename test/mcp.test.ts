@@ -72,7 +72,7 @@ test("exposes the expected tools, and no way to approve", async () => {
 test("list_bots returns the sample bots", async () => {
   const { text } = await call("list_bots");
   const bots = JSON.parse(text);
-  assert.deepEqual(bots.map((b: any) => b.name), ["coder", "ledger", "reporter"]);
+  assert.deepEqual(bots.map((b: any) => b.name), ["coder", "ledger", "reporter", "shopper"]);
   assert.ok(bots.find((b: any) => b.name === "ledger").tools.includes("finance.summary"));
 });
 

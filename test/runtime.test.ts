@@ -169,3 +169,26 @@ test("csv + date parsing", () => {
   assert.equal(normalizeDate("9/3/26"), "2026-09-03");
   assert.equal(normalizeDate("2026-09-03T10:00:00Z"), "2026-09-03");
 });
+
+test("skills: the prompt lists them and the bot loads one with skills.read", async () => {
+  const { config, store, bot } = setup({ skills: ["weekly-money-report"] });
+  fs.cpSync(path.join(import.meta.dirname, "../skills/weekly-money-report"), path.join(config.rootDir, "skills/weekly-money-report"), { recursive: true });
+  requests.length = 0;
+  script = [{ tools: [["skills.read", { name: "weekly-money-report" }]] }, { tools: [["skills.read", { name: "weekly-money-report", file: "example.md" }]] }, { text: "ok" }];
+  const agent = new Agent(config, store, bot, "background");
+  await agent.send("write my weekly report");
+  const system = requests[0].messages[0].content as string;
+  assert.match(system, /# Skills[\s\S]*- weekly-money-report: Use when writing a weekly/);
+  assert.ok(requests[0].tools.some((t: any) => t.function.name === "skills__read"), "skills.read is offered");
+  const results = agent.messages.filter((m) => m.role === "tool").map((m) => m.content);
+  assert.match(results[0], /# Weekly money report/, "instructions come back");
+  assert.match(results[1], /The headline/, "supporting file comes back");
+
+  // A bot without skills isn't offered the tool or the section.
+  const plain = setup();
+  requests.length = 0;
+  script = [{ text: "hi" }];
+  await new Agent(plain.config, plain.store, plain.bot, "interactive").send("hi");
+  assert.doesNotMatch(requests[0].messages[0].content, /# Skills/);
+  assert.ok(!requests[0].tools.some((t: any) => t.function.name === "skills__read"));
+});

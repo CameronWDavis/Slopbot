@@ -154,6 +154,11 @@ export class SlopOAuthProvider implements OAuthClientProvider {
 
   async redirectToAuthorization(url: URL) {
     if (!this.openUrl) throw new NeedsSignInError(this.server);
+    // The address comes from the server: only ever open a web page with it (never file:, custom
+    // schemes or anything the OS would launch). Plain http only for this computer.
+    const loopback = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(url.hostname);
+    if (!(url.protocol === "https:" || (url.protocol === "http:" && loopback)) || url.username || url.password)
+      throw new Error(`"${this.server}" asked to open an unsafe sign-in address (${url.protocol}//…). Not opened.`);
     this.redirected = true;
     await this.openUrl(url.toString());
   }
