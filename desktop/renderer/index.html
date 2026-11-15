@@ -25,7 +25,7 @@
       </header>
 
       <aside class="sidebar">
-        <div class="section-label">Bots</div>
+        <div class="section-label section-label-row">Bots <button class="add-bot" id="add-bot" title="Make a new bot">+ New bot</button></div>
         <nav id="bot-list" class="bot-list" aria-label="Bots"></nav>
 
         <div class="section-label">Views</div>
@@ -52,7 +52,10 @@
               <h1 id="chat-title">—</h1>
               <p id="chat-desc" class="muted"></p>
             </div>
-            <button class="ghost small" id="new-chat">New chat</button>
+            <div class="head-actions">
+              <button class="ghost small" id="edit-bot">Edit bot</button>
+              <button class="ghost small" id="new-chat">New chat</button>
+            </div>
           </div>
           <div class="thread" id="thread" aria-live="polite"></div>
           <form class="composer" id="composer">
@@ -249,6 +252,45 @@
         <div class="modal-actions">
           <button class="ghost" id="skill-cancel">Cancel</button>
           <button class="primary" id="skill-save">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="bot-form" hidden>
+      <div class="modal wide bot-modal" role="dialog" aria-modal="true" aria-labelledby="bot-form-title">
+        <div class="modal-tag">Bot</div>
+        <h2 id="bot-form-title">New bot</h2>
+        <p class="note" id="bot-form-note" hidden></p>
+        <label class="field" id="bot-template-row"><span>Start from</span><select id="bot-template" class="bot-select"></select></label>
+        <div class="shop-settings-grid">
+          <label class="field"><span>Name <em>(lowercase, e.g. gym-coach)</em></span><input id="bot-name" class="mono" maxlength="40" autocomplete="off" spellcheck="false" /></label>
+          <label class="field"><span>Model</span><select id="bot-model" class="bot-select"></select></label>
+        </div>
+        <label class="field"><span>Short description <em>(shown in the sidebar)</em></span><input id="bot-description" maxlength="300" placeholder="Tracks my workouts and nags me." autocomplete="off" /></label>
+        <label class="field"><span>Instructions <em>(who it is, what it does, how it should answer)</em></span><textarea id="bot-persona" class="code json-input bot-persona" spellcheck="true"></textarea></label>
+        <div class="field"><span>What it can use <em>(anything that changes things or reaches out still asks you first)</em></span><div id="bot-tools" class="bot-tools"></div></div>
+        <div class="shop-settings-grid">
+          <label class="field"><span>Extra folders it can use <em>(one per line, e.g. ~/Documents/Workouts)</em></span><textarea id="bot-paths" class="code bot-paths" rows="3" spellcheck="false"></textarea></label>
+          <label class="field"><span>Websites it can read without asking <em>(comma-separated)</em></span><input id="bot-sites" class="mono" placeholder="wikipedia.org, news.ycombinator.com" autocomplete="off" spellcheck="false" /></label>
+        </div>
+        <div class="field">
+          <span>Schedules <em>(run a task on its own at set times)</em></span>
+          <div id="bot-schedules"></div>
+          <button type="button" class="ghost small" id="bot-add-schedule">+ Schedule</button>
+        </div>
+        <details class="bot-advanced">
+          <summary>Advanced</summary>
+          <div class="shop-settings-grid">
+            <label class="field"><span>Max steps per request <em>(default 20)</em></span><input id="bot-steps" type="number" min="1" max="100" /></label>
+            <label class="field"><span>Temperature <em>(0–2, blank for the model's default)</em></span><input id="bot-temp" type="number" min="0" max="2" step="0.1" /></label>
+          </div>
+        </details>
+        <div class="connector-error" id="bot-form-error" hidden></div>
+        <div class="modal-actions">
+          <button class="danger" id="bot-delete" hidden>Delete bot</button>
+          <span class="spacer"></span>
+          <button class="ghost" id="bot-cancel">Cancel</button>
+          <button class="primary" id="bot-save">Save bot</button>
         </div>
       </div>
     </div>

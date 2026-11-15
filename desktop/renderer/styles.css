@@ -1873,3 +1873,100 @@ button.chip.on::before {
 .history-row .ghost.small {
   flex: 0 0 auto;
 }
+
+/* ── bot editor ─────────────────────────────────────── */
+.section-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.add-bot {
+  font: 600 12px var(--body);
+  color: var(--lime);
+  background: transparent;
+  border: 1px dashed rgba(220, 240, 120, 0.5);
+  border-radius: 999px;
+  padding: 2px 10px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.add-bot:hover {
+  background: rgba(220, 240, 120, 0.12);
+}
+.bot-modal {
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.bot-persona {
+  min-height: 160px;
+  font: 13.5px/1.5 var(--body);
+}
+.bot-paths {
+  width: 100%;
+  resize: vertical;
+}
+.bot-tools {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+.tool-group {
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  padding: 6px 10px 8px;
+  margin: 0;
+}
+.tool-group legend {
+  font-weight: 600;
+  font-size: 13px;
+  padding: 0 4px;
+}
+.tool-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  margin-top: 4px;
+}
+.tool-check code {
+  flex: 1;
+}
+.tag.risk-dangerous,
+.tag.risk-external {
+  color: var(--warning-ink);
+}
+.schedule-row {
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  padding: 8px;
+  margin-bottom: 8px;
+}
+.schedule-top {
+  display: grid;
+  grid-template-columns: 1fr 1fr 160px auto;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.schedule-top input,
+.schedule-task {
+  background: var(--surface);
+  border: 1px solid var(--control-line);
+  border-radius: var(--r-control);
+  min-height: 34px;
+  padding: 6px 10px;
+  color: var(--ink);
+  font-size: 13.5px;
+  width: 100%;
+}
+.schedule-task {
+  resize: vertical;
+}
+.bot-advanced summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13.5px;
+  margin: 8px 0;
+}
+.modal-actions .spacer {
+  flex: 1;
+}

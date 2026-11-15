@@ -144,7 +144,18 @@ Pick a bot on the left (**ledger**, **coder** or **reporter**) and try one of th
 
 ## Bots
 
-Bots are YAML files in the `bots/` folder. Three come with SlopBot:
+**Make your own:** click **+ New bot** in the sidebar. Start blank or from a copy of another bot, then set:
+- its name and instructions;
+- the model it uses;
+- what it can use (anything that changes things or reaches out still asks you first);
+- extra folders and websites it may use;
+- schedules for tasks it runs on its own.
+
+**Edit bot** (next to New chat) changes any bot. Your bots are saved in your private app data folder (`data/bots/`), not the project folder or a build.
+
+Editing a bot that comes with SlopBot saves your own copy that replaces it. **Reset to original** brings the original back. New and changed schedules start right away.
+
+Bots are YAML files. These come with SlopBot (in `bots/`):
 
 | Bot | What it does |
 | --- | --- |

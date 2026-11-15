@@ -1,8 +1,13 @@
 // A fake window.slopbot so the renderer can be previewed in a plain browser (npm run desktop:preview).
 // The real app always uses the preload API.
-import type { AgentEvent, ApprovalRequest, McpServerDef, McpServerStatus, McpToolInfo, OllamaStatus, PullProgress, SearchSettings, ShoppingSnapshot, SkillInfo, SlopbotApi, SourceInfo, VaultEntryInfo } from "../api.js";
+import type { AgentEvent, BotSummary, ApprovalRequest, McpServerDef, McpServerStatus, McpToolInfo, OllamaStatus, PullProgress, SearchSettings, ShoppingSnapshot, SkillInfo, SlopbotApi, SourceInfo, VaultEntryInfo } from "../api.js";
 
 export function createMockApi(): SlopbotApi {
+  let mockBots: BotSummary[] = [
+    { name: "coder", description: "Coding bot. Reads, edits, and tests code in folders you allow.", model: "ollama/qwen3:8b", tools: ["fs.read", "shell.run"], schedules: [], custom: false },
+    { name: "ledger", description: "Personal finance bot. Imports bank CSVs, categorizes spending, answers questions, sends weekly reports.", model: "ollama/qwen3:8b", tools: ["memory.remember", "email.send"], schedules: [{ name: "weekly-report", cron: "0 8 * * MON", task: "Weekly report" }], custom: false },
+    { name: "reporter", description: "Research & digest bot. Reads the pages you care about and emails you a summary.", model: "ollama/qwen3:8b", tools: ["http.fetch"], schedules: [], custom: false },
+  ];
   const eventSubs = new Set<(e: AgentEvent) => void>();
   const askSubs = new Set<(r: ApprovalRequest) => void>();
   const answers = new Map<string, (a: string) => void>();
@@ -95,11 +100,30 @@ export function createMockApi(): SlopbotApi {
 
   return {
     info: async () => ({ dataDir: "~/SlopBot/data", rootDir: "~/SlopBot", homeDir: "/Users/you", defaultModel: "ollama/qwen3:8b", version: "preview", secrets: "keychain" }),
-    listBots: async () => [
-      { name: "ledger", description: "Personal finance bot. Imports bank CSVs, categorizes spending, answers questions, sends weekly reports.", model: "ollama/qwen3:8b", tools: ["finance.summary", "email.send"], schedules: [{ name: "weekly-report", cron: "0 8 * * MON", task: "Weekly report" }] },
-      { name: "coder", description: "Coding bot. Reads, edits, and tests code in folders you allow.", model: "ollama/qwen3:8b", tools: ["fs.read", "shell.run"], schedules: [] },
-      { name: "reporter", description: "Research & digest bot. Reads the pages you care about and emails you a summary.", model: "ollama/qwen3:8b", tools: ["http.fetch"], schedules: [] },
+    listBots: async () => structuredClone(mockBots),
+    getBot: async (name) => {
+      const b = mockBots.find((x) => x.name === name)!;
+      return { name: b.name, description: b.description, persona: `You are ${b.name}.\n- Be concise.\n`, model: "", tools: b.tools, allowedPaths: [], sites: [], schedules: b.schedules.map((s) => ({ ...s, notify: "none" as const })), custom: b.custom, overridesBuiltIn: false };
+    },
+    botTools: async () => [
+      { name: "fs.read", description: "Read a file.", risk: "read" },
+      { name: "fs.write", description: "Write a file.", risk: "write" },
+      { name: "shell.run", description: "Run a command.", risk: "dangerous" },
+      { name: "http.fetch", description: "Fetch a page.", risk: "external" },
+      { name: "web.search", description: "Search the web.", risk: "read" },
+      { name: "memory.remember", description: "Remember something.", risk: "read" },
+      { name: "memory.forget", description: "Forget something.", risk: "read" },
+      { name: "email.send", description: "Send an email.", risk: "external" },
     ],
+    async saveBot(d) {
+      if (!/^[a-z0-9][a-z0-9_-]*$/.test(d.name)) throw new Error("Bot name: lowercase letters, numbers, - and _ (up to 40), e.g. gym-coach");
+      if (!d.persona.trim()) throw new Error("Write the bot's instructions (who it is and how it should work)");
+      mockBots = mockBots.filter((b) => b.name !== d.previousName && b.name !== d.name);
+      mockBots.push({ name: d.name, description: d.description, model: d.model || "ollama/qwen3:8b", tools: d.tools, schedules: d.schedules, custom: true });
+      mockBots.sort((a, b) => a.name.localeCompare(b.name));
+      return d.name;
+    },
+    deleteBot: async (name) => void (mockBots = mockBots.filter((b) => b.name !== name)),
     listModels: async () => ["ollama/qwen3:8b", "anthropic/claude-sonnet-5-5", "openai/gpt-5"],
     async send(bot, text) {
       emit({ type: "run.start", bot });

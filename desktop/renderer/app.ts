@@ -9,6 +9,7 @@ import { createChannels } from "./channels-ui.js";
 import { createSkills } from "./skills-ui.js";
 import { createShopping } from "./shopping-ui.js";
 import { createSources } from "./sources-ui.js";
+import { createBotEditor } from "./bots-ui.js";
 
 declare global {
   interface Window {
@@ -56,6 +57,22 @@ const models_ = createModels(api, {
 
 const vault = createVault(api, () => bots.map((b) => b.name));
 const skills = createSkills(api, () => bots.map((b) => b.name));
+const botEditor = createBotEditor(api, {
+  bots: () => bots.map((b) => b.name),
+  models: () => models,
+  onSaved: async (name) => {
+    bots = await api.listBots();
+    threads.delete(name); // fresh empty state with the new description
+    await selectBot(name);
+    showView("chat");
+  },
+  onDeleted: async (name) => {
+    bots = await api.listBots();
+    threads.delete(name);
+    if (bots.length) await selectBot(bots.some((b) => b.name === name) ? name : bots[0].name);
+    else renderBots();
+  },
+});
 const shopping = createShopping(api);
 const sources = createSources(api, {
   watchFeed: (f) => {
@@ -508,6 +525,8 @@ function wire() {
     modelChoice.set(current, (e.target as HTMLSelectElement).value);
     $("model-pill").textContent = `model: ${modelChoice.get(current)}`;
   });
+  $("add-bot").addEventListener("click", () => void botEditor.open());
+  $("edit-bot").addEventListener("click", () => current && void botEditor.open(current));
   $("new-chat").addEventListener("click", async () => {
     if (busy.has(current)) return;
     await api.reset(current);
