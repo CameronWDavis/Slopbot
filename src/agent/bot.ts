@@ -31,6 +31,10 @@ export interface BotDef {
   permissions: PolicyRule[];
   schedules: Schedule[];
   file: string;
+  /** Made or edited by the user in the app (saved in their private data, not the app's bots). */
+  custom?: boolean;
+  /** A custom bot that replaces a built-in one with the same name. */
+  overridesBuiltIn?: boolean;
 }
 
 const NAME_RE = /^[a-z0-9][a-z0-9_-]*$/;
@@ -64,13 +68,29 @@ export function parseBot(file: string): BotDef {
   };
 }
 
+/** Bots you create or edit in the app: private per-user data, never the project folder or a build. */
+export const userBotsDir = (config: Config) => path.join(config.dataDir, "bots");
+
+function readDir(dir: string): BotDef[] {
+  if (!fs.existsSync(dir)) return [];
+  const out: BotDef[] = [];
+  for (const f of fs.readdirSync(dir).filter((f) => /\.ya?ml$/.test(f)).sort()) {
+    try {
+      out.push(parseBot(path.join(dir, f)));
+    } catch (e: any) {
+      console.error(`slopbot: skipping ${f}: ${e.message}`); // one broken file shouldn't hide every bot
+    }
+  }
+  return out;
+}
+
+/** Built-in bots (bots/) plus your own (data/bots/); yours replace a built-in with the same name. */
 export function loadBots(config: Config): BotDef[] {
-  if (!fs.existsSync(config.botsDir)) return [];
-  return fs
-    .readdirSync(config.botsDir)
-    .filter((f) => /\.ya?ml$/.test(f))
-    .sort()
-    .map((f) => parseBot(path.join(config.botsDir, f)));
+  const builtIn = readDir(config.botsDir);
+  const mine = config.dataDir ? readDir(userBotsDir(config)) : [];
+  const byName = new Map(builtIn.map((b) => [b.name, b]));
+  for (const b of mine) byName.set(b.name, { ...b, custom: true, overridesBuiltIn: byName.has(b.name) });
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function loadBot(config: Config, name: string): BotDef {

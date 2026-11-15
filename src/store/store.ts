@@ -155,19 +155,47 @@ export class Store {
     fs.appendFileSync(this.p("audit.jsonl"), line + "\n", { mode: 0o600 });
   }
 
+  /** The newest `limit` events (oldest first), reading the log backwards so a big log stays fast. */
   readAudit(opts: { bot?: string; limit?: number } = {}): AuditEvent[] {
-    let text = "";
+    const limit = opts.limit ?? 50;
+    let fd: number;
     try {
-      text = fs.readFileSync(this.p("audit.jsonl"), "utf8");
+      fd = fs.openSync(this.p("audit.jsonl"), "r");
     } catch {
       return [];
     }
-    let events = text
-      .split("\n")
-      .filter(Boolean)
-      .map((l) => JSON.parse(l) as AuditEvent);
-    if (opts.bot) events = events.filter((e) => e.bot === opts.bot);
-    return events.slice(-(opts.limit ?? 50));
+    const found: AuditEvent[] = [];
+    try {
+      const CHUNK = 64 * 1024;
+      let pos = fs.fstatSync(fd).size;
+      let rest = Buffer.alloc(0); // start of a line that continues into the chunk after it
+      while (pos > 0 && found.length < limit) {
+        const len = Math.min(CHUNK, pos);
+        pos -= len;
+        const chunk = Buffer.alloc(len);
+        fs.readSync(fd, chunk, 0, len, pos);
+        let buf = Buffer.concat([chunk, rest]);
+        // Unless we're at the start of the file, the first line may be cut off: keep it for later.
+        const nl = pos > 0 ? buf.indexOf(10) : -1;
+        rest = nl >= 0 ? buf.subarray(0, nl) : Buffer.alloc(0);
+        if (pos > 0 && nl < 0) {
+          rest = buf;
+          continue;
+        }
+        buf = buf.subarray(nl + 1);
+        const lines = buf.toString("utf8").split("\n");
+        for (let i = lines.length - 1; i >= 0 && found.length < limit; i--) {
+          if (!lines[i]) continue;
+          try {
+            const e = JSON.parse(lines[i]) as AuditEvent;
+            if (!opts.bot || e.bot === opts.bot) found.push(e);
+          } catch {}
+        }
+      }
+    } finally {
+      fs.closeSync(fd);
+    }
+    return found.reverse();
   }
 
   // ── sessions ───────────────────────────────────────────

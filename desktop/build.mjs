@@ -14,7 +14,8 @@ const common = { bundle: true, sourcemap: true, logLevel: "info", target: "es202
 await Promise.all([
   build({ ...common, entryPoints: [path.join(root, "desktop/main.ts")], outfile: path.join(out, "main.cjs"), platform: "node", format: "cjs", external: ["electron"] }),
   build({ ...common, entryPoints: [path.join(root, "desktop/preload.ts")], outfile: path.join(out, "preload.cjs"), platform: "node", format: "cjs", external: ["electron"] }),
-  build({ ...common, entryPoints: [path.join(root, "desktop/renderer/app.ts")], outfile: path.join(out, "renderer/app.js"), platform: "browser", format: "iife" }),
+  // ESM with code splitting: the mascot (three.js) becomes its own chunk, loaded after first paint.
+  build({ ...common, entryPoints: [path.join(root, "desktop/renderer/app.ts")], outdir: path.join(out, "renderer"), platform: "browser", format: "esm", splitting: true, chunkNames: "chunks/[name]-[hash]" }),
 ]);
 
 const copy = (from, to) => {

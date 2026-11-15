@@ -82,6 +82,7 @@ function readAssignments(config: Config): Assignments {
   }
 }
 function writeAssignments(config: Config, a: Assignments) {
+  invalidateSkills();
   const file = assignFile(config);
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
   const tmp = `${file}.${process.pid}.tmp`;
@@ -108,7 +109,27 @@ function validate(meta: Record<string, any>): { name: string; description: strin
 }
 
 /** Every skill in the library, including broken ones (with `error`) so the app can show them. */
+/**
+ * listSkills is called on every agent step, so results are cached. Changes made through SlopBot
+ * clear the cache at once; edits made in Finder / an editor show up within SKILLS_TTL_MS.
+ */
+const SKILLS_TTL_MS = 10_000;
+const skillCache = new Map<string, { at: number; skills: Skill[] }>();
+const cacheKey = (config: Config) => `${config.dataDir}|${bundledSkillsDir(config)}`;
+export function invalidateSkills() {
+  skillCache.clear();
+}
+
 export function listSkills(config: Config): Skill[] {
+  const key = cacheKey(config);
+  const hit = skillCache.get(key);
+  if (hit && Date.now() - hit.at < SKILLS_TTL_MS) return hit.skills.map((x) => ({ ...x, bots: [...x.bots] }));
+  const skills = scanSkills(config);
+  skillCache.set(key, { at: Date.now(), skills });
+  return skills.map((x) => ({ ...x, bots: [...x.bots] }));
+}
+
+function scanSkills(config: Config): Skill[] {
   migrate(config);
   const assigned = readAssignments(config);
   const found = new Map<string, { dir: string; bundled: boolean }>();
@@ -261,6 +282,7 @@ export function writeSkill(config: Config, input: { name: string; description: s
   } catch {}
   const front = YAML.stringify({ ...meta, name, description }).trim();
   fs.writeFileSync(path.join(dir, "SKILL.md"), `---\n${front}\n---\n\n${input.instructions.trim()}\n`);
+  invalidateSkills();
   if (input.bots) assign(config, name, input.bots);
   return name;
 }

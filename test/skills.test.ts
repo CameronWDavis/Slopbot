@@ -6,7 +6,7 @@ import { test } from "node:test";
 import type { BotDef } from "../src/agent/bot.js";
 import { buildSystemPrompt } from "../src/agent/prompt.js";
 import type { Config } from "../src/config.js";
-import { addSkill, assign, listSkills, parseSkillMd, removeSkill, skillsForBot, writeSkill } from "../src/skills/skills.js";
+import { addSkill, assign, invalidateSkills, listSkills, parseSkillMd, removeSkill, skillsForBot, writeSkill } from "../src/skills/skills.js";
 import { skillsReadTool } from "../src/skills/tool.js";
 
 function setup() {
@@ -76,6 +76,7 @@ test("write, rename and validate skills from the editor", () => {
   // A hand-made folder whose SKILL.md name doesn't match is listed with an error, not offered.
   fs.mkdirSync(path.join(config.dataDir, "skills", "mismatch"));
   fs.writeFileSync(path.join(config.dataDir, "skills", "mismatch", "SKILL.md"), "---\nname: other\ndescription: d\n---\n");
+  invalidateSkills(); // made outside SlopBot: picked up after the cache expires, or now
   assert.match(listSkills(config).find((s) => s.name === "mismatch")!.error!, /folder is "mismatch"/);
 });
 

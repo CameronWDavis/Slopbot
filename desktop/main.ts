@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { loadBot, loadBots } from "../src/agent/bot.js";
+import { botDraft, deleteBot, editableBotFile, saveBot, toolCatalog, type BotDraft } from "../src/agent/bot-edit.js";
 import { Agent, executeApproval } from "../src/agent/runtime.js";
 import { loadConfig, type Config } from "../src/config.js";
 import { McpManager, type McpServerDef } from "../src/mcp/client.js";
@@ -61,6 +62,14 @@ let mcp: McpManager;
 let ollama: Ollama;
 let telegram: TelegramChannel;
 let shopping: ShoppingService;
+let ownsSchedules = false;
+let cronJobs: { stop(): void }[] = [];
+/** (Re)start every bot's schedules, e.g. after a bot is added or edited. */
+function restartSchedules() {
+  if (!ownsSchedules) return;
+  for (const j of cronJobs) j.stop();
+  cronJobs = startDaemon(config, store, mcp, { telegram: (t, x) => telegram.report(t, x) });
+}
 let shopBrowser: ElectronShopBrowser;
 let home: string;
 const pulls = new Map<string, AbortController>();
@@ -247,9 +256,33 @@ function registerIpc() {
       description: b.description,
       model: b.model ?? config.defaultModel ?? "",
       tools: toolsFor(b.tools).map((t) => t.name),
+      custom: !!b.custom,
       schedules: b.schedules.map(({ name, cron, task }) => ({ name, cron, task })),
     })),
   );
+
+  // Your bots: created and edited in the app, saved in private data (data/bots/).
+  const botsChanged = (name?: string) => {
+    if (name && !busy.has(name)) agents.delete(name);
+    for (const n of agents.keys()) if (!busy.has(n) && !loadBots(config).some((b) => b.name === n)) agents.delete(n);
+    telegram.config = config; // drops Telegram's cached conversations so they use the new settings
+    restartSchedules();
+  };
+  ipcMain.handle("bots:get", (_e, name: string) => botDraft(loadBot(config, name)));
+  ipcMain.handle("bots:tools", () => toolCatalog());
+  ipcMain.handle("bots:save", (_e, draft: BotDraft) => {
+    if (draft.previousName && busy.has(draft.previousName)) throw new Error("That bot is working right now. Try again when it's done.");
+    const name = saveBot(config, draft);
+    if (draft.previousName && draft.previousName !== name) agents.delete(draft.previousName);
+    botsChanged(name);
+    return name;
+  });
+  ipcMain.handle("bots:delete", (_e, name: string) => {
+    if (busy.has(name)) throw new Error("That bot is working right now. Try again when it's done.");
+    deleteBot(config, name);
+    agents.delete(name);
+    botsChanged();
+  });
 
   ipcMain.handle("models:list", async () => {
     const models = new Set<string>();
@@ -544,7 +577,7 @@ function registerIpc() {
   });
   ipcMain.handle("ollama:useForBot", (_e, botName: string, model: string | null) => {
     const provider = ensureOllamaProvider(config.rootDir, `${ollama.baseUrl}/v1`);
-    setBotModel(loadBot(config, botName).file, model ? `${provider}/${model}` : null);
+    setBotModel(editableBotFile(config, botName), model ? `${provider}/${model}` : null);
     reloadConfig();
   });
 
@@ -655,6 +688,7 @@ function adoptShellPath() {
 
 app.on("before-quit", () => {
   shopping?.stop();
+  shopping?.state.flush(); // batched watch status
   shopBrowser?.close();
   void mcp?.closeAll();
   void telegram?.stop();
@@ -694,7 +728,10 @@ app.whenReady().then(() => {
   // Always-on while the app is open: Telegram, plus the bots' schedules (unless `slopbot daemon`
   // already runs them; the lock keeps it to one process).
   void telegram.start();
-  if (acquireLock(config.dataDir, "scheduler")) startDaemon(config, store, mcp, { telegram: (t, x) => telegram.report(t, x) });
+  if (acquireLock(config.dataDir, "scheduler")) {
+    ownsSchedules = true;
+    restartSchedules();
+  }
   if (process.env.SLOPBOT_SMOKE) smokeTest(process.env.SLOPBOT_SMOKE);
   app.on("activate", () => {
     if (!win || win.isDestroyed()) createWindow();

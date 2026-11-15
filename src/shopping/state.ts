@@ -187,18 +187,41 @@ function migrate(s: any): State {
   return { version: 2, watches, deals: [], reservations: [], settings: { ...DEFAULTS, savedFeeds: s?.settings?.savedFeeds ?? DEFAULT_FEEDS } };
 }
 
+/** States with unsaved routine changes; written on exit so nothing is lost. */
+const pending = new Set<ShoppingState>();
+process.on("exit", () => {
+  for (const st of pending) st.flush();
+});
+
+/**
+ * Kept in memory after the first read. Changes to deals, purchases, budgets, watches you edit and
+ * settings are written to disk immediately (they must survive a crash). Routine watch status
+ * (last check, next check, X usage) is batched and written a couple of seconds later.
+ */
 export class ShoppingState {
   readonly file: string;
+  private cache?: State;
+  private timer?: NodeJS.Timeout;
+  static BATCH_MS = 2000;
+
   constructor(dataDir: string) {
     this.file = path.join(dataDir, "shopping", "state.json");
   }
 
-  read(): State {
-    try {
-      return migrate(JSON.parse(fs.readFileSync(this.file, "utf8")));
-    } catch {
-      return migrate({ version: 2, watches: [], deals: [], reservations: [], settings: {} });
+  private load(): State {
+    if (!this.cache) {
+      try {
+        this.cache = migrate(JSON.parse(fs.readFileSync(this.file, "utf8")));
+      } catch {
+        this.cache = migrate({ version: 2, watches: [], deals: [], reservations: [], settings: {} });
+      }
     }
+    return this.cache;
+  }
+
+  /** A copy of the current state (changing it doesn't change what's stored; use update()). */
+  read(): State {
+    return structuredClone(this.load());
   }
 
   private write(s: State) {
@@ -208,15 +231,28 @@ export class ShoppingState {
     fs.renameSync(tmp, this.file);
   }
 
-  update<T>(fn: (s: State) => T): T {
-    const s = this.read();
+  /** Write any batched changes now. */
+  flush() {
+    clearTimeout(this.timer);
+    this.timer = undefined;
+    if (!pending.delete(this) || !this.cache) return;
+    this.write(this.cache);
+  }
+
+  /** Change the state. `durable: false` batches the write (for routine status updates). */
+  update<T>(fn: (s: State) => T, opts: { durable?: boolean } = {}): T {
+    const s = this.load();
     const out = fn(s);
-    this.write(s);
-    return out;
+    pending.add(this);
+    if (opts.durable === false) {
+      this.timer ??= setTimeout(() => this.flush(), ShoppingState.BATCH_MS);
+      this.timer.unref?.();
+    } else this.flush();
+    return structuredClone(out);
   }
 
   // ── watches ──
-  watches = () => this.read().watches;
+  watches = () => structuredClone(this.load().watches);
 
   saveWatch(input: WatchInput): Watch {
     const w = normalizeWatch(input);
@@ -242,11 +278,15 @@ export class ShoppingState {
     });
   }
 
+  /** Status updates from checks (batched). */
   patchWatch(id: string, patch: Partial<Watch>) {
-    this.update((s) => {
-      const w = s.watches.find((x) => x.id === id);
-      if (w) Object.assign(w, patch);
-    });
+    this.update(
+      (s) => {
+        const w = s.watches.find((x) => x.id === id);
+        if (w) Object.assign(w, patch);
+      },
+      { durable: false },
+    );
   }
 
   removeWatch(id: string) {
@@ -254,8 +294,8 @@ export class ShoppingState {
   }
 
   // ── deals ──
-  deals = () => this.read().deals;
-  deal = (id: string) => this.read().deals.find((d) => d.id === id);
+  deals = () => structuredClone(this.load().deals);
+  deal = (id: string) => structuredClone(this.load().deals.find((d) => d.id === id));
 
   addDeal(d: Omit<Deal, "id" | "foundAt" | "updatedAt" | "status" | "history" | "quantity">, approvalMinutes: number): Deal {
     return this.update((s) => {
@@ -296,7 +336,7 @@ export class ShoppingState {
   }
 
   // ── settings ──
-  settings = () => this.read().settings;
+  settings = () => structuredClone(this.load().settings);
 
   saveSettings(patch: Partial<ShoppingSettings>): ShoppingSettings {
     return this.update((s) => {
@@ -320,7 +360,7 @@ export class ShoppingState {
       s.settings.xUsage.posts += posts;
       s.settings.xUsage.requests += requests;
       return s.settings.xUsage;
-    });
+    }, { durable: false });
   }
 
   xBudgetLeft(): number {
@@ -329,7 +369,7 @@ export class ShoppingState {
   }
 
   // ── budget reservations (for future auto-buy; tested now) ──
-  reservations = () => this.read().reservations;
+  reservations = () => structuredClone(this.load().reservations);
 
   /**
    * Hold `amount` against the daily limit before a purchase runs. Spent + held + amount must fit.

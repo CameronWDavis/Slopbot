@@ -11,6 +11,10 @@ const subscribe = <T>(channel: string, cb: (payload: T) => void) => {
 const api: SlopbotApi = {
   info: () => ipcRenderer.invoke("info"),
   listBots: () => ipcRenderer.invoke("bots:list"),
+  getBot: (name) => ipcRenderer.invoke("bots:get", name),
+  botTools: () => ipcRenderer.invoke("bots:tools"),
+  saveBot: (draft) => ipcRenderer.invoke("bots:save", draft),
+  deleteBot: (name) => ipcRenderer.invoke("bots:delete", name),
   listModels: () => ipcRenderer.invoke("models:list"),
   send: (bot, text, model) => ipcRenderer.invoke("chat:send", bot, text, model),
   reset: (bot) => ipcRenderer.invoke("chat:reset", bot),

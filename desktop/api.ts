@@ -6,6 +6,28 @@ export interface BotSummary {
   model: string;
   tools: string[];
   schedules: { name: string; cron: string; task: string }[];
+  /** Made or edited by you (saved in your private data). */
+  custom: boolean;
+}
+
+export interface BotDraft {
+  name: string;
+  description: string;
+  persona: string;
+  model?: string;
+  tools: string[];
+  allowedPaths: string[];
+  sites: string[];
+  maxSteps?: number;
+  temperature?: number;
+  schedules: { name: string; cron: string; task: string; notify: "email" | "telegram" | "none" }[];
+  previousName?: string;
+}
+
+export interface ToolInfo {
+  name: string;
+  description: string;
+  risk: "read" | "write" | "external" | "dangerous";
 }
 
 export interface ApprovalRequest {
@@ -276,6 +298,10 @@ export interface SourceInfo {
 export interface SlopbotApi {
   info(): Promise<{ dataDir: string; rootDir: string; homeDir: string; defaultModel: string; version: string; secrets: "keychain" | "dpapi" | "libsecret" | "file" }>;
   listBots(): Promise<BotSummary[]>;
+  getBot(name: string): Promise<BotDraft & { custom: boolean; overridesBuiltIn: boolean }>;
+  botTools(): Promise<ToolInfo[]>;
+  saveBot(draft: BotDraft): Promise<string>;
+  deleteBot(name: string): Promise<void>;
   listModels(): Promise<string[]>;
   send(bot: string, text: string, model?: string): Promise<void>;
   reset(bot: string): Promise<void>;

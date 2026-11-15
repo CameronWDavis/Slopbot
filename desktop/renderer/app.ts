@@ -1,7 +1,6 @@
 import type { AgentEvent, ApprovalRequest, BotSummary, SlopbotApi } from "../api.js";
 import type { Director } from "./director.js";
 import { renderMarkdown } from "./markdown.js";
-import { mountMascot } from "./mascot.js";
 import { createMockApi } from "./mock-api.js";
 import { createConnectors } from "./connectors.js";
 import { createModels } from "./models.js";
@@ -106,6 +105,9 @@ function setStatus(state: string) {
 }
 
 async function initMascot() {
+  // three.js + the model are most of the interface code: load them after the window is up.
+  await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+  const { mountMascot } = await import("./mascot.js");
   director = await mountMascot($("mascot"));
   if (!director) {
     setStatus("idle");
