@@ -1881,17 +1881,21 @@ button.chip.on::before {
   justify-content: space-between;
 }
 .add-bot {
-  font: 600 12px var(--body);
+  display: block;
+  width: calc(100% - 4px);
+  margin: 8px 2px 0;
+  padding: 10px 12px;
+  font: 700 14px var(--body);
+  text-align: left;
   color: var(--lime);
   background: transparent;
-  border: 1px dashed rgba(220, 240, 120, 0.5);
-  border-radius: 999px;
-  padding: 2px 10px;
-  text-transform: none;
-  letter-spacing: 0;
+  border: 1.5px dashed rgba(220, 240, 120, 0.55);
+  border-radius: 14px;
+  cursor: pointer;
 }
 .add-bot:hover {
   background: rgba(220, 240, 120, 0.12);
+  border-style: solid;
 }
 .bot-modal {
   max-height: 90vh;
